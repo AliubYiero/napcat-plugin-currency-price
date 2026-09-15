@@ -9,23 +9,86 @@
 1. 【必须】**四层链路, 各层只做自己的事**: 接收层不认识指令语义, 分发层不做业务, 执行层不再做权限校验。业务 handler 收到的参数已保证满足角色与作用域要求, 可直接执行。
 2. 【必须】**校验在分发层统一完成**: 角色的推导与比较能力由权限模块提供 (见 [permission-pattern](./permission-pattern.md)), 但**校验时机与失败反馈收敛在分发层**。权限检查散落在接收层或 handler 内会随指令增多而失控。
 3. 【必须】**校验失败反馈不对称是设计而非偶然**: 权限不足与未知指令静默 (防权限探测), 作用域不符回复提示 (可用性)。
+4. 【应该】**接收层按配置剥离 @ 机器人 CQ 段**: 接收层在配置允许时剥离开头 @ 机器人的 CQ 段, 使 `@机器人 + 前缀指令` 可触发; 该行为默认开启, 可通过 `allowAtBotTrigger` 配置关闭。剥离逻辑抽为独立纯函数, 接收层不内联复杂匹配。
 
 ## 范式正文
 
 ### 一、接收层: handleMessage
 
-接收层职责固定为四步, 顺序不可调换:
+接收层职责固定为五步, 顺序不可调换:
 
-1. 【必须】**群启用检查**: 群消息先查该群是否启用插件, 未启用直接返回 (先于前缀检查, 避免在禁用群里做无谓的字符串处理)。
-2. 【必须】**前缀检查**: `rawMessage` 必须以配置的 `commandPrefix` 开头, 否则静默返回。前缀不匹配是绝大多数消息的正常路径, **不回复、不记日志**。
-3. 【必须】**切词**: 去掉前缀后 `trim().split(/\s+/)` 得到参数数组。空串会切出 `['']`, 由分发层的参数检查兜底。
-4. 【必须】**分发**: 将参数数组交给分发层。
+1. 【必须】**群启用检查**: 群消息先查该群是否启用插件, 未启用直接返回 (先于规范化与前缀检查, 避免在禁用群里做无谓的字符串处理)。
+2. 【应该】**规范化 `rawMessage`**: 按配置决定是否剥离开头 @ 机器人的 CQ 段, 以支持 `@机器人 + 前缀指令` 触发 (见 1.1); 配置关闭时整体跳过, `rawMessage` 原样进入前缀检查。
+3. 【必须】**前缀检查**: `rawMessage` 必须以配置的 `commandPrefix` 开头, 否则静默返回。前缀不匹配是绝大多数消息的正常路径, **不回复、不记日志**。
+4. 【必须】**切词**: 去掉前缀后 `trim().split(/\s+/)` 得到参数数组。空串会切出 `['']`, 由分发层的参数检查兜底。
+5. 【必须】**分发**: 将参数数组交给分发层。
 
 要点:
 
 - 【必须】整个 `handleMessage` 包在 try/catch 中, 任何异常记日志不外抛——它是所有消息事件的入口, 异常外抛会影响插件宿主。
-- 【应该】前缀与群启用状态读自配置, 运行期生效, 无需重启。
+- 【应该】前缀、群启用状态与 @ 机器人剥离开关读自配置, 运行期生效, 无需重启。
 - 【必须】接收层**不做权限校验**。权限属于指令语义, 由分发层统一处理。
+- 【应该】@ 机器人剥离逻辑抽为独立纯函数, `selfId` 取自 `PluginState.selfId`, 群聊与私聊统一处理; debug 日志只记剥离成功与 `selfId` 无效两种情况 (见 1.1)。
+
+#### 1.1 @机器人 CQ 段剥离 (可选配置)
+
+> ⚠️ **默认行为变更**: 若插件提供 `allowAtBotTrigger` 配置且默认开启, 升级后以前静默的 `[CQ:at,qq=机器人] #指令` 将开始触发指令。插件作者应在文档或更新说明中告知用户。
+
+接收层在"群启用检查"之后、"前缀检查"之前对 `rawMessage` 执行一次规范化, 以支持 `@机器人 + 前缀指令` 的触发方式。规范化顺序固定为:
+
+1. 整体 `rawMessage.trim()`;
+2. 调用 `stripAtBotPrefix(rawMessage, selfId)` 剥离开头匹配 `selfId` 的 at CQ 段;
+3. 对剩余字符串执行 `trimStart()`;
+4. 将规范化后的字符串交给前缀检查。
+
+**配置**
+
+- 【可以】提供 `allowAtBotTrigger` 配置项, 类型 `boolean`, 默认 `true`, 经 `sanitizeConfig` 清洗后使用, 运行期生效。
+- 若插件不提供该配置项, 则等价于始终执行剥离。
+- 当 `allowAtBotTrigger = false` 时, **完全跳过规范化步骤** (不整体 `trim()`、不剥离、不 `trimStart()`), `rawMessage` 原样进入前缀检查。此时 `[CQ:at,qq=...] #cmd` 会因不以 `commandPrefix` 开头而静默返回。
+
+**剥离规则**
+
+- 【必须】只剥离消息开头**第一个**匹配 `selfId` 的 at CQ 段; 其他 at 段保留不动。
+- 【必须】`selfId` 来自 `PluginState.selfId`, 不硬编码机器人 QQ 号。
+- 【必须】匹配容忍度: `CQ` 标记大小写不敏感; `qq` 值可带单引号、双引号或无引号; 属性顺序不限; 允许额外属性 (如 `name=...`); `qq` 值必须精确等于 `selfId` 的字符串形式。
+- 【必须】群聊与私聊统一处理, 不额外判断会话类型。
+- 【必须】`selfId` 缺失、为空、类型无效时跳过剥离, 保持原 `rawMessage` 继续前缀检查; 不抛异常、不回复, 最多记 debug 日志。
+- 【必须】剥离后执行 `trimStart()`, 避免 `[CQ:at,qq=...] #cmd` 因前导空格导致前缀检查失败。
+
+**实现建议**
+
+- 【应该】将剥离逻辑抽为独立纯函数模块, 例如 `at-bot-prefix.ts`, 导出:
+
+  ```ts
+  function stripAtBotPrefix(rawMessage: string, selfId: string): string
+  ```
+
+- 【应该】该函数只负责剥离, 不负责整体 `trim()`、`trimStart()`, 也不产生日志副作用。
+- 【应该】接收层负责编排 `trim()` → `stripAtBotPrefix` → `trimStart()`, 并在需要时记录 debug 日志。
+
+**debug 日志**
+
+- 【应该】仅在以下情况记录 debug 日志: 剥离成功时 (记录原始 `rawMessage` 与剥离后字符串); `selfId` 缺失或无效时 (记录一次)。
+- 【必须】普通前缀不匹配、权限不足、未知指令仍保持静默, 不记日志。
+
+**最小示例**
+
+```text
+原始:          [CQ:at,qq=268491285] #steam help
+trim 后:       [CQ:at,qq=268491285] #steam help
+剥离后:        #steam help
+trimStart 后:  #steam help
+
+前缀检查通过, 进入切词与分发。
+```
+
+> 示例中的 `268491285` 仅为示例值, 实际应使用 `PluginState.selfId`。
+
+**边界说明**
+
+- 【必须】`@机器人` 但未跟指令时, 仍按普通消息静默, 不回复"请输入指令"。
+- 【应该】该行为默认开启, 属于行为变更; 若用户不希望 `@机器人` 触发, 可通过配置关闭。
 
 ### 二、分发层: 注册表工厂
 
@@ -128,14 +191,19 @@ max: {
 - [ ] 【应该】需要调整角色档位或推导规则时改权限模块, 不改分发层 (见 [permission-pattern](./permission-pattern.md))。
 - [ ] 【必须】回复一律走发送工具模块, 不直接调 `ctx.actions.call`。
 
+启用 `@机器人` 触发时:
+
+- [ ] 【应该】接收层已按 `allowAtBotTrigger` 配置决定是否剥离开头 @ 机器人 CQ 段; 剥离逻辑抽为独立纯函数, 接收层不内联复杂匹配。
+- [ ] 【可以】提供 `allowAtBotTrigger` 配置, 默认 `true`, 经 `sanitizeConfig` 清洗, 运行期生效; 若不提供, 等价于始终剥离。
+
 ## 与其他范式的关系
 
 - 与**生命周期铁律**的关系: 注册表与 handler 均为纯装配 (构造期零 IO), 可模块加载期导出; 消息事件只在运行期到达。见 [development-pattern](./development-pattern.md)。
 - 与**权限范式**的关系: 分发层消费 `hasRole(UserRole, requiredRole)` 的判定结果, 但不实现角色推导——推导与比较属于权限模块。见 [permission-pattern](./permission-pattern.md)。
-- 与**配置范式**的关系: 前缀与群启用开关读自配置, 经 `sanitizeConfig` 清洗后使用; 会话开关在接收层最前端短路。见 [config-pattern](./config-pattern.md)。
+- 与**配置范式**的关系: 前缀、群启用开关与 `allowAtBotTrigger` 读自配置, 经 `sanitizeConfig` 清洗后使用; 会话开关在接收层最前端短路, @机器人剥离在群启用检查之后、前缀检查之前按配置执行。见 [config-pattern](./config-pattern.md)。
 - 与**消息发送范式**的关系: 所有回复走发送工具模块。见 [message-send-pattern](./message-send-pattern.md)。
 - 与**帮助输出范式**的关系: 帮助指令按"角色 + 会话类型"选输出版本 (而非仅按角色), 版本档位与权限档位不是一一对应。见 [help-output-pattern](./help-output-pattern.md)。
 
 ## 参考实现
 
-napcat-plugin-bilibili-monitor 项目: 消息接收入口见 `packages/plugin/src/handlers/message-handler.ts`, 指令注册表与分发见同目录指令模块; 示例业务 handler 为 live 模块的 `addLiveHandler` / `mentionLiveHandler` / `maxLiveHandler`。权限模块的实例索引见 [permission-pattern](./permission-pattern.md)。
+消息接收入口见 `packages/plugin/src/handlers/message-handler.ts`, 指令注册表与分发见同目录指令模块; 示例业务 handler 为 live 模块的 `addLiveHandler` / `mentionLiveHandler` / `maxLiveHandler`。权限模块的实例索引见 [permission-pattern](./permission-pattern.md)。@机器人 CQ 段剥离逻辑见 `at-bot-prefix.ts` (参考项目尚未实现, 待实现)。
