@@ -172,11 +172,12 @@ class PluginState {
      * 保存 JSON 数据文件
      * @param filename 数据文件名
      * @param data 要保存的数据
+     * @param space 保存文件的空白符
      */
-    saveDataFile<T>(filename: string, data: T): void {
+    saveDataFile<T>( filename: string, data: T, space: number = 0): void {
         const filePath = this.getDataFilePath(filename);
         try {
-            fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+            fs.writeFileSync(filePath, JSON.stringify(data, null, space), 'utf-8');
         } catch (e) {
             this.logger.error("(╥﹏╥) 保存数据文件 " + filename + " 失败:", e);
         }
