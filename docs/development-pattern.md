@@ -16,7 +16,7 @@
 
 ## 文档体系与骨架
 
-专项范式文档共五份, 全部遵循统一六段骨架:
+专项范式文档共六份, 全部遵循统一六段骨架:
 
 > **概述** (定位 + 适用范围) → **核心约束** (铁律, 必须/应该/可以 逐条标注) → **范式正文** (正反例并入正文, 按档位分层) → **标准范式清单** (checkbox, 逐条带档位) → **与其他范式的关系** → **参考实现** (2–3 行实例索引)
 
@@ -24,7 +24,8 @@
 | --- | --- |
 | [store-pattern.md](./store-pattern.md) | 数据持久化: 单例 store、延迟实例化、模块加载期禁 IO |
 | [config-pattern.md](./config-pattern.md) | 配置全链路: 类型/默认值/Schema/清洗四环节、会话级开关 |
-| [instruction-pattern.md](./instruction-pattern.md) | 指令分发: 接收→分发→执行链路、权限模型、作用域校验 |
+| [permission-pattern.md](./permission-pattern.md) | 权限: 四档角色模型、入口推导、线性比较、超管名单、按形态裁剪 |
+| [instruction-pattern.md](./instruction-pattern.md) | 指令分发: 接收→分发→执行链路、作用域校验、失败反馈策略 |
 | [message-send-pattern.md](./message-send-pattern.md) | 消息发送: 发送工具收敛、消息段工厂 |
 | [help-output-pattern.md](./help-output-pattern.md) | 帮助输出: 权威源 → 生成 → 产物 → 运行时变体选择 |
 
@@ -50,7 +51,7 @@ NapCat 插件加载流程: **模块 import → `plugin_init(ctx)` → 运行**�
   → 持久化层 (store)     JSON 文件读写, 单例 + 延迟实例化 [store-pattern]
   → 外部 API 层 (api)    上游服务 HTTP 封装, 与业务解耦
 横切: 发送工具 [message-send-pattern]、配置 [config-pattern]、
-      帮助输出 [help-output-pattern]、权限推导
+      帮助输出 [help-output-pattern]、权限推导 [permission-pattern]
 ```
 
 各层通用纪律:

@@ -21,7 +21,8 @@ NapCat 插件开发模板 (pnpm monorepo), 基于实际生产项目架构提炼�
 
 - [store-pattern](docs/store-pattern.md) → `packages/plugin/src/store/`、`core/state.ts`
 - [config-pattern](docs/config-pattern.md) → `types.ts`、`config.ts`、`core/state.ts`
-- [instruction-pattern](docs/instruction-pattern.md) → `handlers/message-handler.ts`、指令注册表、`core/admin.ts`
+- [permission-pattern](docs/permission-pattern.md) → `core/admin.ts`、`adminUsers` 配置链 (类型/默认值/清洗)
+- [instruction-pattern](docs/instruction-pattern.md) → `handlers/message-handler.ts`、指令注册表
 - [message-send-pattern](docs/message-send-pattern.md) → `handlers/utils.ts`
 - [help-output-pattern](docs/help-output-pattern.md) → `scripts/generateHelp/`、`utils/helpMessage.ts`; 渲染服务在独立项目 `napcat-help-generate`
 

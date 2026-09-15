@@ -103,7 +103,7 @@ interface Instruction {
 | `superAdmin` | 群聊 | Admin |
 | `superAdmin` | 私聊 | SuperAdmin |
 
-映射依据 (角色定义见 [instruction-pattern](./instruction-pattern.md) 的四档权限模型):
+映射依据 (角色定义见 [permission-pattern](./permission-pattern.md) 的四档角色模型):
 
 - `privateUser` (机器人好友的私聊用户) 等同 admin 权限组, 故输出 Admin 版; 非好友私聊角色为 user, 输出 User 版。
 - **群聊超管输出 Admin 版而非 SuperAdmin 版**: SuperAdmin 版含有仅私聊可用的指令, 在群聊中输出会误导用户。私聊超管才能看到完整版。
@@ -123,7 +123,8 @@ interface Instruction {
 
 ## 与其他范式的关系
 
-- 与**指令分发范式**的关系: 帮助 handler 是普通指令 handler, 在注册表中注册; 变体映射的输入 `UserRole` 来自权限模型的入口推导。权限档位与帮助版本档位不是一一对应关系。见 [instruction-pattern](./instruction-pattern.md)。
+- 与**指令分发范式**的关系: 帮助 handler 是普通指令 handler, 在注册表中注册, 并复用分发层推导好的 `UserRole`。见 [instruction-pattern](./instruction-pattern.md)。
+- 与**权限范式**的关系: 变体映射的输入 `UserRole` 来自权限模块的入口推导; 权限档位与帮助版本档位不是一一对应关系。见 [permission-pattern](./permission-pattern.md)。
 - 与**消息发送范式**的关系: `sendHelpMessage` 内部走发送工具模块发送图片/文本, 失败即触发文本回退。见 [message-send-pattern](./message-send-pattern.md)。
 
 ## 参考实现
