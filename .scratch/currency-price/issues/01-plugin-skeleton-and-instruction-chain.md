@@ -57,19 +57,13 @@ None - can start immediately
 ——playwright-core 尚未被引用, 抓取片接入后才会涨到 6.4 MB）; 本项目源码 `tsc --noEmit` 0 报错;
 部署机确认加载成功。
 
-**实现期定下的三处判断**（各自影响后续切片, 记在此处免得重复讨论）:
+**实现期定下的两处判断**（各自影响后续切片, 记在此处免得重复讨论）:
 
-1. **分发层是纯函数**。`resolveInstruction(userRole, args, registry)` 返回判别联合
-   (`execute` / `invalid-args` / `unknown-command` / `permission-denied` / `scope-mismatch`),
-   不发送消息、不碰全局状态; 接收层拿结果决定回复什么。失败文案的渲染 `renderFailure` 与它同模块
-   ——ADR-0002 明文规定"分发层对三类校验失败一律回复", 文案属于分发层的策略, 因此没有按设计文档 §6
-   的草图放进 `utils/text.ts`。
-2. **`InstructionDefinition` 多了一个 `validateArgs`**。设计文档 §11.2 的「非法参数」样例是
-   `game add 原神`——合法取值取决于运行期 `catalogs`, 表达不进声明式的 `requiredRole` / `scope`。
-   故加一个可选钩子 `validateArgs(args) => string | null`（返回出错的参数表示不合法）。
-   **校验顺序固定为 作用域 → 权限 → 参数取值**: 权限先于取值, 免得把"合法取值有哪些"泄露给
-   本来就无权执行的人（有单测守着）。
-3. **`catalogs` 的条目合法性判据 = `name` 与 `pageUrl` 都是非空字符串**。二者是"去哪抓"的定位信息,
+1. **分发层是纯函数 + `InstructionDefinition` 多了 `validateArgs`**。这两条是一件事——为了让
+   "全部校验收敛在分发层"在**取值校验**上也成立。已落为
+   [ADR-0004](../../../docs/adr/0004-pure-dispatch-with-validate-args.md), 含被否决的三个方案
+   (handler 返回失败回执 / 取值塞进 `scopeRules` / 文案放进 `utils/text.ts`) 与否决理由。
+2. **`catalogs` 的条目合法性判据 = `name` 与 `pageUrl` 都是非空字符串**。二者是"去哪抓"的定位信息,
    缺任一即整条丢弃; `currencyList` / `zoneConfigs` 缺失只降级为空数组, 条目保留。`zoneConfigs`
    的**每一行必须整行都是字符串**, 否则丢弃该行——少一级的组合会静默指向另一个区服。
 
