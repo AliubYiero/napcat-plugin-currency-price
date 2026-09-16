@@ -21,18 +21,19 @@
         "homepage": "https://github.com/AliubYiero/napcat-plugin-"
     },
     "dependencies": {
-        "napcat-types": "0.0.16"
+        "napcat-types": "0.0.16",
+        "playwright-core": "^1.63.0"
     },
     "devDependencies": {
+        "@napcat-plugin-template/shared": "workspace:*",
+        "@napcat-plugin-template/webui": "workspace:*",
         "@rollup/plugin-node-resolve": "^15.3.1",
         "@types/express": "^5.0.6",
         "@types/node": "^20.19.33",
         "napcat-plugin-debug-cli": "^1.2.8",
         "typescript": "^5.9.3",
         "vite": "^6.4.1",
-        "ws": "^8.19.0",
-        "@napcat-plugin-template/shared": "workspace:*",
-        "@napcat-plugin-template/webui": "workspace:*"
+        "ws": "^8.19.0"
     },
     "scripts": {
         "build": "vite build",
