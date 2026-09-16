@@ -10,8 +10,26 @@ import type { NapCatPluginContext } from 'napcat-types/napcat-onebot/network/plu
 import type { UserRole } from '../../core/admin';
 import { sessionKeyOf, sessionScopeLabel } from '../../core/session';
 import { pluginState } from '../../core/state';
+import { getBrowserStatus } from '../../services/browser/status';
+import { DataStore } from '../../store/data.store';
 import { SessionStore } from '../../store/session.store';
 import { sendReply } from '../utils';
+
+/**
+ * 浏览器状态的一行文案。
+ *
+ * ⚠️ **只读缓存**（`getBrowserStatus`）。这里绝不能触发检测——`status` 是随时会被敲的指令,
+ * 而完整检测要起一个浏览器进程。
+ *
+ * 「未检测」是真话, 不是占位符: 插件启动时会做一次轻量检测填充缓存, 因此这个状态只会出现在
+ * 启动异常或检测被清空之后。
+ */
+function browserLabel(): string {
+    const status = getBrowserStatus();
+    if (status.checkedAt === null) return '未检测';
+
+    return status.available ? '可用' : '不可用';
+}
 
 /** `#currency status` */
 export async function statusHandler(
@@ -42,8 +60,7 @@ export async function statusHandler(
 
     // 浏览器状态**只对「私聊 + 超管」显示**——普通成员看它没有意义, 也不该暴露部署细节
     if (userRole.role === 'superAdmin' && userRole.from.type === 'private') {
-        // 该行的数据来源在片 06 落地, 此处先把可见性规则与位置定下来
-        lines.push('', '浏览器：未检测');
+        lines.push('', `浏览器：${browserLabel()}`);
     }
 
     await sendReply(ctx, event, lines.join('\n'));

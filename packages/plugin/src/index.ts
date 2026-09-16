@@ -31,6 +31,7 @@ import { buildConfigSchema } from './config';
 import { pluginState } from './core/state';
 import { handleMessage } from './handlers/message-handler';
 import { registerApiRoutes } from './services/api-service';
+import { ensureBrowserStatus, invalidateBrowserStatus } from './services/browser/status';
 import type { PluginConfig } from './types';
 
 // ==================== 配置 UI Schema ====================
@@ -59,6 +60,12 @@ export const plugin_init: PluginModule['plugin_init'] = async (ctx) => {
 
         // 4. 注册 API 路由
         registerApiRoutes(ctx);
+
+        // 5. 探测一次浏览器状态并填充缓存。
+        //    ⚠️ 这是**轻量**检测（只查文件是否存在, 不起进程）, 与 `/chrome/detect` 的
+        //    完整验证不是一回事: 后者要起一个浏览器, 只该由 WebUI 显式触发。
+        //    不在这里补这一次的话, 指令与仪表盘会一直显示"未检测", 直到有人点一次「重新检测」。
+        ensureBrowserStatus();
 
         ctx.logger.info('插件初始化完成');
     } catch (error) {
@@ -98,6 +105,8 @@ export const plugin_cleanup: PluginModule['plugin_cleanup'] = async (ctx) => {
     try {
         // TODO: 在这里清理你的资源（定时器、WebSocket 连接等）
         pluginState.cleanup();
+        // 浏览器状态是模块级缓存, 热重载后不该把上一次的检测结果带进新实例
+        invalidateBrowserStatus();
         ctx.logger.info('插件已卸载');
     } catch (e) {
         ctx.logger.warn('插件卸载时出错:', e);

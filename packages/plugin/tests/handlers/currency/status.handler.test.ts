@@ -11,6 +11,11 @@ import { DEFAULT_CONFIG } from '../../../src/config';
 import { pluginState } from '../../../src/core/state';
 import { handleMessage } from '../../../src/handlers/message-handler';
 import {
+    detectBrowserLightweight,
+    invalidateBrowserStatus,
+} from '../../../src/services/browser/status';
+import type { DetectOptions } from '../../../src/services/browser/launcher';
+import {
     createTestEnv,
     groupMessage,
     privateMessage,
@@ -21,9 +26,19 @@ let env: TestEnv;
 
 const SUPER_ADMIN = '958341409';
 
+/** 一台"有浏览器"的假机器 */
+const WITH_CHROME: DetectOptions = {
+    platform: 'linux',
+    env: {},
+    homeDir: '/home/napcat',
+    isFile: (path) => path === '/usr/bin/chromium',
+};
+
 beforeEach(() => {
     env = createTestEnv();
     env.init();
+    // 浏览器状态是模块级缓存, 会在用例之间残留——每个用例从不检测的干净状态开始
+    invalidateBrowserStatus();
     pluginState.config = {
         ...DEFAULT_CONFIG,
         adminUsers: [SUPER_ADMIN],
@@ -112,5 +127,27 @@ describe('status — 浏览器行的可见性', () => {
             '浏览器',
         );
         expect(await send(groupMessage('#currency status'))).not.toContain('浏览器');
+    });
+});
+
+describe('status — 浏览器行接真实数据源', () => {
+    async function statusForSuperAdmin(): Promise<string> {
+        return send(privateMessage('#currency status', { userId: SUPER_ADMIN, subType: 'friend' }));
+    }
+
+    it('检测过且可用 → 「浏览器：可用」', async () => {
+        detectBrowserLightweight(WITH_CHROME);
+
+        expect(await statusForSuperAdmin()).toContain('浏览器：可用');
+    });
+
+    it('检测过但不可用 → 「浏览器：不可用」', async () => {
+        detectBrowserLightweight({ ...WITH_CHROME, isFile: () => false });
+
+        expect(await statusForSuperAdmin()).toContain('浏览器：不可用');
+    });
+
+    it('**从未检测过时说「未检测」, 不谎报可用**——本条只对超管可见, 更不该糊弄', async () => {
+        expect(await statusForSuperAdmin()).toContain('浏览器：未检测');
     });
 });

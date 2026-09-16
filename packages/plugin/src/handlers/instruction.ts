@@ -17,6 +17,7 @@ import { hasRole, type UserRole } from '../core/admin';
 import { gameAddHandler, gameListHandler, gameRemoveHandler, validateGameName } from './currency/game.handler';
 import { helpHandler } from './currency/help.handler';
 import { createNotifySwitchHandler, notifyViewHandler } from './currency/notify.handler';
+import { priceHandler } from './currency/price.handler';
 import { statusHandler } from './currency/status.handler';
 
 /** 指令执行函数。校验已由分发层完成, 内部不做权限/作用域判断。 */
@@ -88,6 +89,7 @@ export const registry: InstructionRegistry = {
     root: {
         help: { handler: helpHandler },
         status: { handler: statusHandler },
+        price: { handler: priceHandler },
         notify: { handler: notifyViewHandler, validateArgs: rejectUnexpectedArgs },
         game: { handler: gameListHandler, validateArgs: rejectUnexpectedArgs },
     },

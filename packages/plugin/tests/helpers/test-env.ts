@@ -27,9 +27,25 @@ export interface TestEnv {
     init(): void;
     /** 清空发送记录 */
     clearSent(): void;
+    /**
+     * 调用一个已注册的 API 路由。
+     *
+     * @param key 形如 `GET /chrome/status`（方法是注册时用的那个）
+     * @returns 该路由写出的状态码与响应体
+     */
+    callRoute(key: string, req?: unknown): Promise<RouteCall>;
     /** 删除临时目录 */
     dispose(): void;
 }
+
+/** 一次 API 路由调用的结果 */
+export interface RouteCall {
+    status: number;
+    body: unknown;
+}
+
+/** 已注册路由的 handler。**故意用宽类型**: 测试只关心它写出了什么 */
+type RouteHandler = (req: never, res: never) => unknown;
 
 /**
  * 建一个隔离的宿主环境。**不自动初始化 pluginState**——由用例决定何时"加载插件"
@@ -50,6 +66,13 @@ export function createTestEnv(root?: string): TestEnv {
         error: vi.fn(),
     };
 
+    /** 已注册的 API 路由: `GET /chrome/status` → handler */
+    const routes = new Map<string, RouteHandler>();
+    /** 记录路由注册, 供 `callRoute` 调用 */
+    const register = (method: string) => (urlPath: string, handler: RouteHandler): void => {
+        routes.set(`${method} ${urlPath}`, handler);
+    };
+
     const ctx = {
         pluginName: 'napcat-plugin-currency-price',
         pluginPath: root,
@@ -65,6 +88,16 @@ export function createTestEnv(root?: string): TestEnv {
                 }
                 return { user_id: '10000' };
             },
+        },
+        router: {
+            // 鉴权与免鉴权在测试里不做区分: 断言的是"这个路由写出了什么", 不是它挂在哪
+            get: register('GET'),
+            post: register('POST'),
+            getNoAuth: register('GET'),
+            postNoAuth: register('POST'),
+            static: () => {},
+            staticOnMem: () => {},
+            page: () => {},
         },
     } as unknown as NapCatPluginContext;
 
@@ -82,6 +115,30 @@ export function createTestEnv(root?: string): TestEnv {
         },
         clearSent() {
             sent.length = 0;
+        },
+        async callRoute(key, req = {}) {
+            const handler = routes.get(key);
+            if (!handler) throw new Error(`路由未注册：${key}`);
+
+            let status = 200;
+            let body: unknown = null;
+
+            const res = {
+                status(code: number) {
+                    status = code;
+
+                    return res;
+                },
+                json(payload: unknown) {
+                    body = payload;
+
+                    return res;
+                },
+            };
+
+            await (handler as (a: unknown, b: unknown) => unknown)(req, res);
+
+            return { status, body };
         },
         dispose() {
             fs.rmSync(root, { recursive: true, force: true });

@@ -18,10 +18,21 @@
 
 import type {
     NapCatPluginContext,
-    PluginHttpRequest,
-    PluginHttpResponse
 } from 'napcat-types/napcat-onebot/network/plugin/types';
 import { pluginState } from '../core/state';
+import { getInstallState, runInstall } from './browser/chrome-installer';
+import { detectBrowserFull, getBrowserStatus } from './browser/status';
+import { DataStore } from '../store/data.store';
+
+/**
+ * API 层的依赖注入点。
+ *
+ * 检测与安装要起浏览器进程 / 下载几百 MB, 单测里不该真做。本项目其余测试一律跑真实实现,
+ * 所以这里不用 mock 框架, 只把这两个重动作换成可替换引用。
+ */
+export const apiServiceDeps = {
+    detectBrowserFull,
+};
 
 /**
  * 注册 API 路由
@@ -31,7 +42,7 @@ export function registerApiRoutes(ctx: NapCatPluginContext): void {
 
     // ==================== 插件信息（无鉴权）====================
 
-    /** 获取插件状态 */
+    /** 获取插件状态（含各游戏最后抓取时间, 供仪表盘显示） */
     router.getNoAuth('/status', (_req, res) => {
         res.json({
             code: 0,
@@ -41,8 +52,53 @@ export function registerApiRoutes(ctx: NapCatPluginContext): void {
                 uptimeFormatted: pluginState.getUptimeFormatted(),
                 config: pluginState.config,
                 stats: pluginState.stats,
+                games: gameStatuses(),
             },
         });
+    });
+
+    // ==================== 浏览器（无鉴权）====================
+
+    /**
+     * 浏览器状态。**只读缓存, 零副作用**。
+     *
+     * ⚠️ 模板的 WebUI 每 5 秒轮询一次状态。如果这里每次都跑 `launch()`, 只要有人开着面板
+     * 就会**每 5 秒拉起一次浏览器**——检测必须由 `POST /chrome/detect` 显式触发。
+     */
+    router.getNoAuth('/chrome/status', (_req, res) => {
+        res.json({ code: 0, data: getBrowserStatus() });
+    });
+
+    /** 执行一次完整检测（轻量检查 → `launch()` 验证, 5000ms 超时）并刷新缓存 */
+    router.postNoAuth('/chrome/detect', async (_req, res) => {
+        try {
+            res.json({ code: 0, data: await apiServiceDeps.detectBrowserFull() });
+        } catch (error) {
+            ctx.logger.error('浏览器检测失败:', error);
+            res.status(500).json({ code: -1, message: String(error) });
+        }
+    });
+
+    /**
+     * 触发 Chrome 下载安装。
+     *
+     * **后台跑, 不 await**: 下载几百 MB 会让请求悬着。前端靠轮询进度端点拿进展。
+     */
+    router.postNoAuth('/chrome/install', (_req, res) => {
+        if (getInstallState().running) {
+            res.json({ code: 0, message: '安装已在进行中' });
+
+            return;
+        }
+
+        void runInstall().catch((error) => ctx.logger.error('Chrome 安装失败:', error));
+
+        res.json({ code: 0, message: 'ok' });
+    });
+
+    /** 安装进度 */
+    router.getNoAuth('/chrome/install/progress', (_req, res) => {
+        res.json({ code: 0, data: getInstallState() });
     });
 
     // ==================== 配置管理（无鉴权）====================
@@ -150,4 +206,18 @@ export function registerApiRoutes(ctx: NapCatPluginContext): void {
     // TODO: 在这里添加你的自定义 API 路由
 
     ctx.logger.debug('API 路由注册完成');
+}
+
+/**
+ * 各游戏的数据状态。
+ *
+ * `readAt` 是**游戏级**的（见设计文档 §7.2）——仪表盘要显示的是"这个游戏的数据是什么时候的",
+ * 不是"整次抓取是什么时候的"。
+ */
+function gameStatuses(): Array<{ name: string; readAt: string; lastError: string | null }> {
+    return Object.entries(DataStore.getInstance().getGames()).map(([name, record]) => ({
+        name,
+        readAt: record.readAt,
+        lastError: record.lastError,
+    }));
 }
