@@ -27,3 +27,17 @@ NapCat 插件开发模板 (pnpm monorepo), 基于实际生产项目架构提炼�
 - [help-output-pattern](docs/help-output-pattern.md) → `scripts/generateHelp/`、`utils/helpMessage.ts`; 渲染服务在独立项目 `napcat-help-generate`
 
 以本模板开新项目时: 复制 `CONTEXT.md` 与本文件的骨架, 按新项目领域填充术语与实例索引; 范式文档保持通用, 不写回项目细节。
+
+## Agent skills
+
+### Issue tracker
+
+Issue 以本地 Markdown 落在 `.scratch/<feature-slug>/` (无 git remote, 也无 `gh` / `glab`)。见 `docs/agents/issue-tracker.md`。
+
+### Triage labels
+
+默认五档: `needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`, 写进 issue 头部的 `Status:` 行。见 `docs/agents/triage-labels.md`。
+
+### Domain docs
+
+单上下文: 根目录 `CONTEXT.md` + `docs/adr/`; 另有 `docs/design.md` 作为设计意图的长期权威。见 `docs/agents/domain.md`。
