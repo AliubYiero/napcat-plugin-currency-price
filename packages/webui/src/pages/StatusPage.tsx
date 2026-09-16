@@ -116,8 +116,15 @@ export default function StatusPage({ status, onRefresh }: StatusPageProps) {
                     </button>
                 </div>
                 <div className="space-y-3">
-                    <InfoRow label="命令前缀" value={config.commandPrefix} />
-                    <InfoRow label="冷却时间" value={`${config.cooldownSeconds} 秒`} />
+                    <InfoRow label="指令前缀" value={config.commandPrefix} />
+                    <InfoRow
+                        label="超级管理员"
+                        value={
+                            config.adminUsers.length > 0
+                                ? config.adminUsers.join('、')
+                                : '未配置'
+                        }
+                    />
                     <InfoRow label="调试模式" value={config.debug ? '开启' : '关闭'} />
                 </div>
             </div>

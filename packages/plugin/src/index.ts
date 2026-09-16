@@ -120,12 +120,16 @@ export const plugin_set_config: PluginModule['plugin_set_config'] = async (ctx, 
 /**
  * 配置变更回调
  * 当 WebUI 中修改单个配置项时触发（需配置项标记 reactive: true）
+ *
+ * ⚠️ 走 `replaceConfig` 而非 `updateConfig`: 后者是给内部可信调用方的, 而这里的 `value`
+ * 来自 WebUI —— **一切外部输入的配置写回必须经过 `sanitizeConfig`**。
+ * 前缀因此改完即时生效, 无需重启。
  */
 export const plugin_on_config_change: PluginModule['plugin_on_config_change'] = async (
     ctx, ui, key, value, currentConfig
 ) => {
     try {
-        pluginState.updateConfig({ [key]: value });
+        pluginState.replaceConfig({ ...pluginState.config, [key]: value } as PluginConfig);
         ctx.logger.debug(`配置项 ${key} 已更新`);
     } catch (err) {
         ctx.logger.error(`更新配置项 ${key} 失败:`, err);

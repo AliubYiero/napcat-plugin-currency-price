@@ -2,12 +2,14 @@
     "extends": "../../tsconfig.base.json",
     "compilerOptions": {
         "baseUrl": ".",
-        "outDir": "dist",
-        "rootDir": "src"
+        "outDir": "dist"
+        // 刻意不设 `rootDir`: 产物由 vite 打, tsc 只跑 `--noEmit`;
+        // 设了反而会让 `tests/` 里的文件因"不在 rootDir 下"而报 TS6059
     },
     "include": [
         "src/**/*.ts",
-        "src/**/*.json"
+        "src/**/*.json",
+        "tests/**/*.ts"
     ],
     "exclude": [
         "node_modules",

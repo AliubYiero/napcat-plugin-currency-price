@@ -75,19 +75,25 @@ export default function ConfigPage() {
                         onChange={(v) => updateField('debug', v)}
                     />
                     <InputRow
-                        label="命令前缀"
-                        desc="触发命令的前缀"
+                        label="指令前缀"
+                        desc="触发指令的前缀，修改后即时生效"
                         value={config.commandPrefix}
                         onChange={(v) => updateField('commandPrefix', v)}
                     />
                     <InputRow
-                        label="冷却时间 (秒)"
-                        desc="同一命令请求冷却时间，0 表示不限制"
-                        value={String(config.cooldownSeconds)}
-                        type="number"
-                        onChange={(v) => updateField('cooldownSeconds', Number(v) || 0)}
+                        label="超级管理员 QQ 号"
+                        desc="多个 QQ 号用英文逗号分隔。超管在别人的群里也能执行管理指令"
+                        value={config.adminUsers.join(', ')}
+                        onChange={(v) =>
+                            updateField(
+                                'adminUsers',
+                                v
+                                    .split(',')
+                                    .map((id) => id.trim())
+                                    .filter((id) => id.length > 0),
+                            )
+                        }
                     />
-                    {/* TODO: 在这里添加你的配置项 */}
                 </div>
             </div>
 

@@ -13,8 +13,8 @@
 import fs from 'fs';
 import path from 'path';
 import type { NapCatPluginContext, PluginLogger } from 'napcat-types/napcat-onebot/network/plugin/types';
-import { DEFAULT_CONFIG } from '../config';
-import type { PluginConfig, GroupConfig } from '../types';
+import { DEFAULT_CONFIG, MIN_PUSH_INTERVAL_MS, VALID_PUSH_HOURS } from '../config';
+import type { CatalogConfig, PluginConfig, GroupConfig } from '../types';
 
 // ==================== 配置清洗工具 ====================
 
@@ -22,19 +22,71 @@ function isObject(v: unknown): v is Record<string, unknown> {
     return v !== null && typeof v === 'object' && !Array.isArray(v);
 }
 
+/** 非空字符串判定 (清洗时反复用到: 空白串等同于缺失) */
+function isNonEmptyString(v: unknown): v is string {
+    return typeof v === 'string' && v.trim().length > 0;
+}
+
+/**
+ * 清洗单条 catalog。
+ *
+ * `name` 与 `pageUrl` 是"去哪抓"的**定位信息**, 缺任何一个这条配置都无法成立 →
+ * 整体不合法, 丢弃; 其余字段缺失只降级为空数组, 条目本身保留。
+ *
+ * @returns 清洗后的条目; 整体不合法时返回 `null`
+ */
+function sanitizeCatalog(raw: unknown): CatalogConfig | null {
+    if (!isObject(raw)) return null;
+    if (!isNonEmptyString(raw.name) || !isNonEmptyString(raw.pageUrl)) return null;
+
+    return {
+        name: raw.name,
+        pageUrl: raw.pageUrl,
+        currencyList: Array.isArray(raw.currencyList)
+            ? raw.currencyList.filter(isNonEmptyString)
+            : [],
+        // 区服组合的行必须**整体是字符串**: 少一级的组合会静默指向另一个区服
+        zoneConfigs: Array.isArray(raw.zoneConfigs)
+            ? raw.zoneConfigs.filter(
+                  (row): row is string[] =>
+                      Array.isArray(row) && row.every(isNonEmptyString),
+              )
+            : [],
+    };
+}
+
 /**
  * 配置清洗函数
  * 确保从文件读取的配置符合预期类型，防止运行时错误
+ *
+ * 外部输入（磁盘配置文件 / WebUI 提交 / 指令修改）一律经此函数后才进入内存配置。
+ * 规则按字段形态分五类, 见 docs/config-pattern.md 的"清洗规则分类表"。
  */
-function sanitizeConfig(raw: unknown): PluginConfig {
+export function sanitizeConfig(raw: unknown): PluginConfig {
     if (!isObject(raw)) return { ...DEFAULT_CONFIG, groupConfigs: {} };
 
     const out: PluginConfig = { ...DEFAULT_CONFIG, groupConfigs: {} };
 
+    // 标量: typeof 守卫, 不合法保留默认
     if (typeof raw.enabled === 'boolean') out.enabled = raw.enabled;
     if (typeof raw.debug === 'boolean') out.debug = raw.debug;
-    if (typeof raw.commandPrefix === 'string') out.commandPrefix = raw.commandPrefix;
-    if (typeof raw.cooldownSeconds === 'number') out.cooldownSeconds = raw.cooldownSeconds;
+    if (typeof raw.allowAtBotTrigger === 'boolean') {
+        out.allowAtBotTrigger = raw.allowAtBotTrigger;
+    }
+    // 前缀是空串时保留默认: 空前缀会让**所有**消息都进入指令链路
+    if (isNonEmptyString(raw.commandPrefix)) out.commandPrefix = raw.commandPrefix;
+    if (typeof raw.chromeExecutablePath === 'string') {
+        out.chromeExecutablePath = raw.chromeExecutablePath;
+    }
+
+    // 数值: typeof + 区间校验
+    if (
+        typeof raw.pushIntervalMs === 'number' &&
+        Number.isFinite(raw.pushIntervalMs) &&
+        raw.pushIntervalMs >= MIN_PUSH_INTERVAL_MS
+    ) {
+        out.pushIntervalMs = raw.pushIntervalMs;
+    }
 
     // 群配置清洗
     if (isObject(raw.groupConfigs)) {
@@ -48,7 +100,32 @@ function sanitizeConfig(raw: unknown): PluginConfig {
         }
     }
 
-    // TODO: 在这里添加你的配置项清洗逻辑
+    // 字符串列表: 容错输入格式 (逗号分隔文本 / 数组), 统一转为规范形态后去空项
+    if (typeof raw.adminUsers === 'string') {
+        out.adminUsers = raw.adminUsers
+            .split(',')
+            .map((id) => id.trim())
+            .filter((id) => id.length > 0);
+    } else if (Array.isArray(raw.adminUsers)) {
+        out.adminUsers = raw.adminUsers
+            .map((id) => String(id).trim())
+            .filter((id) => id.length > 0);
+    }
+
+    // 枚举数组: 过滤非法值; **空数组是合法语义**(不做定时推送), 不回退默认
+    if (Array.isArray(raw.pushHours)) {
+        const valid = new Set(VALID_PUSH_HOURS);
+        out.pushHours = raw.pushHours.filter(
+            (hour): hour is number => typeof hour === 'number' && valid.has(hour),
+        );
+    }
+
+    // 嵌套对象数组: 逐字段递归清洗; **整体不合法则丢弃该条目**, 其余条目保留
+    if (Array.isArray(raw.catalogs)) {
+        out.catalogs = raw.catalogs
+            .map(sanitizeCatalog)
+            .filter((catalog): catalog is CatalogConfig => catalog !== null);
+    }
 
     return out;
 }
