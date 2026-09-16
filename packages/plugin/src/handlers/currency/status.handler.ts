@@ -1,14 +1,16 @@
 /**
- * 状态指令（基础版）
+ * 状态指令 (完整版)
  *
- * 完整输出（本会话通知开关 / 已订阅游戏 / 各游戏数据时间 / 浏览器状态）依赖订阅关系、
- * 数据层与浏览器层, 由后续片补全。本片只报告骨架期就已知的部分。
+ * 输出见设计文档 §11.4: 通知开关 / 已订阅游戏 / 各游戏数据时间 / 浏览器状态。
+ * **全部是本会话的**——同一个群看到的状态与隔壁群、与私聊互不相干。
  */
 
 import type { OB11Message } from 'napcat-types/napcat-onebot';
 import type { NapCatPluginContext } from 'napcat-types/napcat-onebot/network/plugin/types';
 import type { UserRole } from '../../core/admin';
+import { sessionKeyOf, sessionScopeLabel } from '../../core/session';
 import { pluginState } from '../../core/state';
+import { SessionStore } from '../../store/session.store';
 import { sendReply } from '../utils';
 
 /** `#currency status` */
@@ -18,16 +20,29 @@ export async function statusHandler(
     _commands: string[],
     userRole: UserRole,
 ): Promise<void> {
-    const { commandPrefix, catalogs } = pluginState.config;
+    const { commandPrefix } = pluginState.config;
+    const { notifyEnabled, enabledGames } = SessionStore.getInstance().getSession(
+        sessionKeyOf(userRole.from),
+    );
 
     const lines = [
         `${commandPrefix} 状态`,
-        `运行时长：${pluginState.getUptimeFormatted()}`,
-        `已配置游戏：${catalogs.map((catalog) => catalog.name).join('、') || '（无）'}`,
+        `${sessionScopeLabel(userRole.from)}通知：${notifyEnabled ? '已开启' : '已关闭'}`,
+        `已订阅游戏：${enabledGames.join('、') || '（无）'}`,
     ];
+
+    if (enabledGames.length > 0) {
+        lines.push('');
+        for (const gameName of enabledGames) {
+            // 数据时间取自 data.json 的**游戏级** readAt (片 03 落盘)。数据层落地前,
+            // 每个游戏都确实"从未抓到过"——这不是占位符, 是此刻的事实
+            lines.push(`${gameName}：未抓取`);
+        }
+    }
 
     // 浏览器状态**只对「私聊 + 超管」显示**——普通成员看它没有意义, 也不该暴露部署细节
     if (userRole.role === 'superAdmin' && userRole.from.type === 'private') {
+        // 该行的数据来源在片 06 落地, 此处先把可见性规则与位置定下来
         lines.push('', '浏览器：未检测');
     }
 

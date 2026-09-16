@@ -14,7 +14,9 @@
 import type { OB11Message } from 'napcat-types/napcat-onebot';
 import type { NapCatPluginContext } from 'napcat-types/napcat-onebot/network/plugin/types';
 import { hasRole, type UserRole } from '../core/admin';
+import { gameAddHandler, gameListHandler, gameRemoveHandler, validateGameName } from './currency/game.handler';
 import { helpHandler } from './currency/help.handler';
+import { createNotifySwitchHandler, notifyViewHandler } from './currency/notify.handler';
 import { statusHandler } from './currency/status.handler';
 
 /** 指令执行函数。校验已由分发层完成, 内部不做权限/作用域判断。 */
@@ -51,20 +53,43 @@ export interface InstructionRegistry {
 }
 
 /**
+ * 拒绝多余参数的取值校验
+ *
+ * 装在**同时也是命名空间的一级指令**上 (`notify` / `game`): 分发层查不到二级子指令时会
+ * 回落查一级, 于是 `game bogus` 会落到"列出游戏"的 handler 上。回落本身是对的 (见
+ * `lookup`), 但把一个打错的子指令**当成查看视图静默执行**会让用户以为指令生效了。
+ * 如实回一句"非法参数 bogus"符合 [ADR-0002](../../../docs/adr/0002-explicit-failure-feedback-over-silence.md)。
+ */
+export function rejectUnexpectedArgs(args: string[]): string | null {
+    return args.length > 0 ? (args[0] ?? '') : null;
+}
+
+/**
  * 本插件的指令注册表（**纯装配, 不含业务**）
  *
  * 新增指令 = 这里加一行 + 在 `handlers/currency/` 写 handler。
  *
- * 本片只装已实现的 `help` / `status`。`price` / `notify` / `game` 见设计文档 §11.1 的
- * 完整指令表, 由后续片逐条加入——**不预告未实现的指令**, 装了就要能用。
+ * `price` 见设计文档 §11.1 的完整指令表, 由片 03 加入——**不预告未实现的指令**, 装了就要能用。
  */
 export const registry: InstructionRegistry = {
     // 二级命名空间: 模块 → 子指令
-    namespaces: {},
+    namespaces: {
+        notify: {
+            on: { handler: createNotifySwitchHandler(true), requiredRole: 'admin' },
+            off: { handler: createNotifySwitchHandler(false), requiredRole: 'admin' },
+        },
+        game: {
+            add: { handler: gameAddHandler, requiredRole: 'admin', validateArgs: validateGameName },
+            // remove 不校验 catalogs: 游戏被从配置里删掉后仍要能退订
+            remove: { handler: gameRemoveHandler, requiredRole: 'admin' },
+        },
+    },
     // 一级: 指令名 → 定义
     root: {
         help: { handler: helpHandler },
         status: { handler: statusHandler },
+        notify: { handler: notifyViewHandler, validateArgs: rejectUnexpectedArgs },
+        game: { handler: gameListHandler, validateArgs: rejectUnexpectedArgs },
     },
 };
 
@@ -136,7 +161,8 @@ export function renderFailure(outcome: DispatchOutcome, commandPrefix: string): 
 
     switch (outcome.kind) {
         case 'invalid-args':
-            return `${commandPrefix}: 非法参数 ${outcome.arg}\n${footer}`;
+            // 参数**缺失**时出错的参数是空串 (`game add` 后面什么都没跟), 尾随空格要收掉
+            return `${commandPrefix}: 非法参数${outcome.arg ? ` ${outcome.arg}` : ''}\n${footer}`;
         case 'unknown-command':
             return `${commandPrefix}: 未知指令 ${outcome.raw}\n${footer}`;
         case 'permission-denied':

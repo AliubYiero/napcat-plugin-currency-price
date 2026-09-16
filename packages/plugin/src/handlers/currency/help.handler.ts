@@ -40,18 +40,25 @@ export function getHelpVariant(userRole: UserRole): HelpVariant {
 /**
  * 文本帮助内容。
  *
- * ⚠️ 临时内容: 只列**当前真正可用**的指令, 不预告尚未实现的指令——列了就是骗用户。
- * 帮助输出片会用生成产物整体替换。
+ * ⚠️ 临时内容: 只列**真正可用**的指令, 不预告尚未实现的指令——列了就是骗用户,
+ * 也**不留"待实现"之类的空话**。帮助输出片会用生成产物整体替换。
  */
 function buildHelpText(variant: HelpVariant, prefix: string): string {
     const lines = [
         `[= 千岛通货价格 =]`,
-        `${prefix} help    显示本帮助`,
-        `${prefix} status  查看本会话订阅与数据状态`,
+        `${prefix} help          显示本帮助`,
+        `${prefix} status        查看本会话的通知与订阅`,
+        `${prefix} notify        查看本会话通知开关`,
+        `${prefix} game          列出可订阅的游戏`,
     ];
 
     if (variant === 'admin' || variant === 'superAdmin') {
-        lines.push('', '管理指令（待后续实现）');
+        lines.push(
+            '',
+            '管理指令',
+            `${prefix} notify on|off            开启／关闭本会话通知`,
+            `${prefix} game add|remove <游戏名>  订阅／退订游戏`,
+        );
     }
 
     return lines.join('\n');
