@@ -50,6 +50,9 @@ coverage
 *.lcov
 .nyc_output
 
+# vitest 的 JSON 报告（由工具链写出, 非源码）
+.vitest/
+
 # Temporary files
 *.tmp
 *.temp
