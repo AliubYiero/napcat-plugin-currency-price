@@ -124,7 +124,7 @@ pnpm run dev
 
 > `deploy` = `vite build`（构建完成时 Vite 插件自动部署+重载）  
 > `dev` = `vite build --watch`（每次重新构建后 Vite 插件自动部署+重载）  
-> 以上命令需在 `packages/plugin` 目录下运行（或用 `pnpm --filter @napcat-plugin-template/plugin exec ...`）。
+> 以上命令需在 `packages/plugin` 目录下运行（或用 `pnpm --filter napcat-plugin-currency-price exec ...`）。
 
 > **注意**：`pnpm run dev` 仅监听**插件后端**（`packages/plugin/src` 下非 webui 的文件）的变化。修改 WebUI 前端代码后，需先重新构建 WebUI（`pnpm --filter @napcat-plugin-template/webui build`），再重跑后端构建即可随插件一起部署。
 >

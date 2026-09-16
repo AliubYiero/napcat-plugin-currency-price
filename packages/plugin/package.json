@@ -1,7 +1,7 @@
 {
-    "name": "@napcat-plugin-template/plugin",
-    "plugin": "",
-    "description": "",
+    "name": "napcat-plugin-currency-price",
+    "plugin": "千岛通货价格",
+    "description": "定时抓取千岛各游戏的通货价格并推送到群聊 / 私聊",
     "version": "1.0.0",
     "type": "module",
     "main": "index.mjs",
@@ -11,14 +11,15 @@
         "napcat",
         "plugin",
         "qq",
-        "template"
+        "currency",
+        "price"
     ],
     "napcat": {
         "tags": [
             "工具"
         ],
         "minVersion": "4.14.0",
-        "homepage": "https://github.com/AliubYiero/napcat-plugin-"
+        "homepage": "https://github.com/AliubYiero/napcat-plugin-currency-price"
     },
     "dependencies": {
         "napcat-types": "0.0.16",
