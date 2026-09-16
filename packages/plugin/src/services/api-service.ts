@@ -59,7 +59,15 @@ export function registerApiRoutes(ctx: NapCatPluginContext): void {
             if (!body) {
                 return res.status(400).json({ code: -1, message: '请求体为空' });
             }
-            pluginState.updateConfig(body as Partial<import('../types').PluginConfig>);
+            // ⚠️ 走 `replaceConfig` 而非 `updateConfig`: 后者只做浅合并、不清洗, 是给内部
+            // 可信调用方的。这里的 body 来自 WebUI —— **一切外部输入的配置写回必须经过
+            // `sanitizeConfig`** (见 docs/config-pattern.md 的核心约束 2)。
+            // 漏了这一步, Schema 面板以文本送来的 `adminUsers` 会原样存成字符串,
+            // `isSuperAdmin` 数组包含检查随即全部落空。
+            pluginState.replaceConfig({
+                ...pluginState.config,
+                ...body,
+            } as import('../types').PluginConfig);
             ctx.logger.info('配置已保存');
             res.json({ code: 0, message: 'ok' });
         } catch (err) {
