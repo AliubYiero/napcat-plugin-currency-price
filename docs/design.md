@@ -92,7 +92,63 @@ interface CatalogConfig {
 
 ### 5.3 清洗
 
-`catalogs` 与 `pushHours` 都是**数组**：`pushHours` 是枚举数组(过滤非法值, **空数组合法**), `catalogs` 是嵌套对象数组(逐字段递归清洗, 整体不合法则丢弃该条目)。默认值就是现有三分区配置——用户不改也能跑。
+`catalogs` 与 `pushHours` 都是**数组**：`pushHours` 是枚举数组(过滤非法值, **空数组合法**), `catalogs` 是嵌套对象数组(逐字段递归清洗, 整体不合法则丢弃该条目)。`catalogs` 的默认值见 §5.4——用户不改也能跑。
+
+### 5.4 默认 `catalogs`（三分区）
+
+即 `DEFAULT_CONFIG.catalogs`。
+
+> ⚠️ 下面代码块里的注释是**实测得出的领域知识, 不是说明文字**。迁进 `config.ts` 时必须**原样保留**——它们是"为什么这份清单与隔壁那份不通用"的唯一记录。
+
+```ts
+const CATALOGS = [
+	{
+		name: '流放之路2',
+		pageUrl:
+			'https://qiandao.com/currency/currency-zone?catalogName=%E6%B5%81%E6%94%BE2%E4%B8%93%E5%8C%BA&islandId=301000&tagIds=[1707645,1708106,1824627,1708366,1815176,1856267,1708370,1707637,1708367,1708373,1708375,1820850,1815650]&attributeId=904221228984762040&entryId=1707645&entryType=TAG',
+		zoneConfigs: [
+			['国服', '赛季', '普通'],
+			['国服', '赛季', '专家'],
+			['国际服', '赛季', '普通'],
+			['国际服', '赛季', '专家'],
+		],
+		currencyList: [
+			'神圣石'
+		],
+	},
+	{
+		name: '流放之路1',
+		pageUrl:
+			'https://qiandao.com/currency/currency-zone?catalogName=%E6%B5%81%E6%94%BE%E4%B9%8B%E8%B7%AF%E4%B8%93%E5%8C%BA&islandId=300445&tagIds=[1837988,1837987,1837989]&attributeId=904221228984762040&entryId=1837988&entryType=TAG',
+		// 实测该分区没有「闪回赛季」，赛季只有「永久 / 赛季」两种
+		zoneConfigs: [
+			['国服', '赛季', '普通'],
+			['国服', '赛季', '专家'],
+			['国际服', '赛季', '普通'],
+			['国际服', '赛季', '专家'],
+		],
+		// 该分区没有「流放2金币」系列，也没有「悉妮蔻拉的发丝」（只有名称相近的「辛格拉的发辫」），
+		// 因此清单与流放之路2 不通用，照抄会静默产出 0
+		currencyList: ['神圣石'],
+	},
+	{
+		name: '火炬之光',
+		pageUrl:
+			'https://qiandao.com/currency/currency-zone?catalogName=%E7%81%AB%E7%82%AC%E4%B9%8B%E5%85%89%E4%B8%93%E5%8C%BA&islandId=300444&tagIds=[1560053]&attributeId=904221228984762040&entryId=1560053&entryType=TAG',
+		// 该分区只有两级，且「非赛季」下没有「专家」难度，故只取「赛季」的两个组合
+		zoneConfigs: [
+			['赛季', '普通'],
+			['赛季', '专家'],
+		],
+		// 整个专区只有这一个通货
+		currencyList: ['初火源质'],
+	},
+];
+```
+
+三个游戏合计 **10 个区服组合**, 与 §16「抓取耗时」一行的实测口径一致。
+
+> ⚠️ **三份 `currencyList` 彼此不通用, 不要"顺手统一"**。同名通货跨游戏独立（见 `CONTEXT.md`），且站点上各专区提供的通货本就不同——把流放之路2 的清单照抄给流放之路1, 表现是**静默产出 0**（名称匹配不上, 不报错）。这正是 §7.2 的游戏级 `missing` 要兜的那类配置错误。
 
 ---
 
@@ -172,7 +228,7 @@ src/
       "missing": [],
       "zones": [
         {
-          "zone": ["国服", "闪回赛季", "普通"],
+          "zone": ["国服", "赛季", "普通"],
           "readAt": "2026-09-16T08:00:05.123Z",
           "prices": [
             { "name": "神圣石", "price": 0.2444, "unit": "元/个" },
@@ -262,13 +318,29 @@ type GameFail = { error: string };
 
 - `playwright-core` **内联打包进 `index.mjs`**。NapCat 宿主**不会**为插件安装 `dependencies`(发布包只含 `index.mjs` / `package.json` / `webui/`), 所以不能走外部依赖。
 
-  `packages/plugin/vite.config.ts` 需要补三处：
-  ```ts
-  external: [...nodeModules, 'bufferutil', 'utf-8-validate'],
-  commonjsOptions: { include: [/node_modules/], transformMixedEsModules: true, defaultIsModuleExports: true },
-  ```
+  ⚠️ **内联的代价比"补三处配置"大得多**。playwright-core 是 CJS 包, 且**在模块加载期**就按 `__dirname` 解析自指的"包根目录"、读取 `package.json` 与 `browsers.json`; 而 rollup 会把 CJS 的 `require` 一律提升成产物**顶层的静态 import**——上游原本惰性的依赖因此变成加载期求值。第 0 步实测踩到全部六类, 缺任何一项都是「构建通过、加载即崩」:
 
-- **浏览器获取**：检测顺序为 `chromeExecutablePath` 配置 → **共享安装路径**（`LOCALAPPDATA/napcat-chrome`，跨插件复用，避免每个插件重下几百 MB）→ 系统 Chrome/Edge 常见路径。都没有时由 WebUI 一键安装（`chrome-installer.ts` 自建多源下载，Google 官方源 + npmmirror CDN + npmmirror Registry）。
+  | 类别 | 处置 | 不处理的后果 |
+  | --- | --- | --- |
+  | 可选原生模块 `bufferutil` / `utf-8-validate` / `kerberos` | 保持 **external** | rollup 报 `failed to resolve import` |
+  | 可选外部包 `chromium-bidi/*`、`electron/*` | 解析为**空桩模块** | 加载期 `ERR_MODULE_NOT_FOUND` |
+  | 内建模块 `inspector` | 解析为**惰性桩** | 加载期 `ERR_INSPECTOR_NOT_AVAILABLE`(QQ/Electron 未编译 inspector) |
+  | 动态 `require(join(packageRoot, …))` | `commonjsOptions.ignoreDynamicRequires: true` | 被替换成抛错的 `commonjsRequire` |
+  | 加载期自指的 `__dirname` / `require` | 产物前置 **shim 横幅** | `__dirname is not defined in ES module scope` |
+  | `browsers.json` | 随包复制到插件根目录 | 加载期读不到, 直接抛错 |
+
+  ⚠️ 两个反直觉点, 不要"顺手统一":
+  - 第一类**必须**保持 external、**不得**改桩。它们包在 `try/catch` 里, 靠"`require` 未定义 → 抛错 → 被 catch"回退到纯 JS 实现; 换成 `{}` 桩会让 ws 选中"原生可用"分支, 把启动期的确定性回退变成发大帧时的随机崩溃。
+  - 命中 `rollupOptions.external` 的 id **会绕过 `resolveId` 钩子**, 所以第三类必须先把它从 `external` 里摘掉, 否则桩不生效。
+
+  完整实现见 `packages/plugin/vite.config.ts`(`bundleShim` / `STUB_MODULES` / `commonjsOptions`), 实测数据见 §17 第 0 步。
+
+- **浏览器获取**：检测顺序为 `chromeExecutablePath` 配置 → **共享安装路径**（跨插件复用, 避免每个插件重下几百 MB）→ 系统浏览器常见路径。都没有时由 WebUI 一键安装（`chrome-installer.ts` 自建多源下载, Google 官方源 + npmmirror CDN + npmmirror Registry）。
+
+  ⚠️ **检测路径表必须按平台分派, 不能只写 Windows**。原方案只列了 `LOCALAPPDATA/napcat-chrome` 与 Chrome/Edge 路径, 而第 0 步实测的部署机是 **Linux**, 这两类**零命中**——`chrome-installer` 因此不是"锦上添花"而是唯一出路。共享安装路径同理, 在 Linux 上应落在 `XDG_DATA_HOME` 一类位置而非 `LOCALAPPDATA`。
+
+  ⚠️ **调用 `launch()` 时一律显式传 `executablePath`**。不给的话 playwright 会去找自带的浏览器: 1.63 的 headless 要的是 `chromium_headless_shell-<rev>`, 与 `chromium-<rev>` 是**两个独立下载物**（实测报错点名的就是前者）——凡遇到"明明装了浏览器却仍报找不到", 先核对这两个名字。
+
 - **不采用** Playwright 自带的 registry 安装：内联打包后磁盘上没有 `node_modules/playwright-core/cli.js`, 自带的安装入口不存在。
 - 精简版：**不做**远程 `wsEndpoint` 连接、页面信号量、健康检查、指数退避重连（本插件串行、单页、用完即关）。**不做** Windows 7/8 兼容分支与 Linux 发行版依赖安装。
 
@@ -329,12 +401,12 @@ type GameFail = { error: string };
 ```
 「流放之路2」2026-09-16 08:00 实时千岛通货价格
 
-【国服 / 闪回赛季 / 普通】
+【国服 / 赛季 / 普通】
 1. 神圣石 0.2444 元/个
 2. 崇高石 1.2345 元/个
 （3 项未取到价格）
 
-【国际服 / 闪回赛季 / 专家】
+【国际服 / 赛季 / 专家】
 1. 初火源质 0.0012 元/火
 ```
 
@@ -552,7 +624,8 @@ plugin_init 完成后 + 每次成功抓取后:
 
 | 项 | 要求 |
 | --- | --- |
-| 运行环境 | Node.js + pnpm; NapCat ≥ 4.14.0; 系统需有 Chrome/Chromium 或由插件安装 |
+| 运行环境 | NapCat ≥ 4.14.0 (**宿主 Node ≥ 20**, playwright 的 bootstrap 在加载期就会 `process.exit(1)`, 版本不足会直接杀进程); 系统需有 Chrome/Chromium 或由插件安装 (**实测部署机没有, 安装器是必需路径**) |
+| 发布包体积 | `index.mjs` 约 **6.4 MB** (gzip 1.2 MB), 由内联 `playwright-core` 决定; 无法通过 tree-shaking 显著削减 (它自身是预打包的大 bundle) |
 | 抓取耗时 | **全部成功时秒级**（实测 10 个区服组合的 `readAt` 总跨度约 9 秒）; 失败路径单组合最坏约 3 分钟 |
 | 内存 | 单次抓取 1 浏览器 + 1 context + 1 page, 不并发开页面 |
 | 磁盘 | `data.json` 单次覆盖写; 归档 1 天 1 文件, 30 天后清理 |
@@ -565,7 +638,7 @@ plugin_init 完成后 + 每次成功抓取后:
 ## 17. 编码顺序
 
 ```
-0.  打包 spike          playwright-core 内联 + 真机 launch/goto —— 不过就停, 后面全白做
+0.  ✅ 打包 spike        playwright-core 内联 + 真机 launch/goto —— 已通过 (2026-09-17)
 1.  骨架                index.ts / types / config / core/state / core/admin
 2.  store 层            session / data / archive（原子写、损坏备份、gzip、清理）
 3.  浏览器层            检测 + 共享路径安装器 + 端点 + 仪表盘页面
@@ -579,6 +652,15 @@ plugin_init 完成后 + 每次成功抓取后:
 ```
 
 **第 0 步不能跳**：这是全案唯一的「构建通过、运行时才炸」风险点——NapCat 不为插件安装依赖, `playwright-core` 只能内联打包, 而它运行时按 `__dirname` 定位 `browsers.json`、spawn 浏览器进程。验证方法是写一个最小 `index.ts` 只做 `chromium.launch()` + `goto()`, 跑 `pnpm build` 看体积与报错, 再丢进真实 NapCat 里跑一次。**它不通过, 抓取层、浏览器层、分发方式全部要重新设计。**
+
+> **第 0 步实测结论 (2026-09-17)：通过。** `dist/index.mjs` 6.4 MB(gzip 1.2 MB); 本机系统 Chrome 启动 463ms、`goto` 站点首页 1585ms(首页无 UA 拦截); 部署到远程 NapCat 后 `runtimeStatus: "loaded"`。
+>
+> **分发方式无需重新设计**, 但内联所需的构建期处置远比 §8.2 原先列出的多——已全部回写该节。
+>
+> 顺带测出两件影响后续步骤的事实:
+>
+> 1. **部署机是 Linux / Node v22.16.0, 且一个浏览器都没有**——直接决定第 3 步的检测顺序与安装器设计, 见 §8.2。
+> 2. **远程可观测性只有 `runtimeError` 一个通道**。调试服务没有读远程日志 / 读远程文件的 RPC, `plugin_init` 的任何输出都传不回来; 第 0 步是靠"跑完后临时抛异常"把遥测塞进 `runtimeError` 才取到的。第 10 步联调会再需要这个手法。
 
 ---
 
