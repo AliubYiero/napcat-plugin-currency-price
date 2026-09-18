@@ -9,8 +9,8 @@
  * 2. **失败不覆盖**——本轮失败时 `zones` / `readAt` 保持上一次成功的内容, 只更新 `lastError`。
  * 3. **`price: null` 与 `price: 0` 不同义**——JSON 天然区分, 本层不得把 `null` 归一成 `0`。
  *
- * ⚠️ 新鲜度判定读的是**游戏级 `readAt`**（片 05），不是全局时间戳。本文件因此不含任何
- * 全局时间字段, 也不要往里加。
+ * ⚠️ 新鲜度判定读的是**游戏级 `readAt`**（片 05）与 **`configFingerprint`**（片 05 补）,
+ * 不是全局时间戳。本文件因此不含任何全局时间字段, 也不要往里加。
  */
 
 import { pluginState } from '../core/state';
@@ -50,6 +50,17 @@ export type GameResult = GameOk | GameFail;
 
 /** `data.json` 里一个游戏的完整记录: 上一次成功的数据 + 最近一次尝试的失败原因 */
 export interface GameRecord extends GameOk {
+    /**
+     * 抓到这份数据时, 该游戏的**配置指纹**（由 `services/staleness` 计算）。
+     *
+     * `zones` 是**按当时那份配置**抓下来的死数据——组合名、有哪些组合、抓哪些通货都
+     * 固化在里面。配置改了, `readAt` 再新也说明不了"这份数据就是现在要的那份", 所以
+     * 指纹与当前配置对不上时, 这份记录判为**过期**(见 design.md §9.2)。
+     *
+     * 旧文件没有该字段 → 清洗层落成空串 → 与任何真实配置都不符 → 重抓一次。
+     * 这是刻意的"宁可多抓"。
+     */
+    configFingerprint: string;
     /** **最近一次抓取尝试**的失败原因; 成功时为 `null`。数据本身仍是上一次成功的 */
     lastError: string | null;
 }
@@ -104,8 +115,11 @@ export class DataStore {
      *
      * 成功与失败走同一个入口, 因为调用方拿到的是 `Record<string, GameOk | GameFail>`,
      * 分派依据就是 `error` 字段的有无（见设计文档 §8.1）。
+     *
+     * @param configFingerprint 本轮抓取**所用配置**的指纹（见 `services/staleness`）。
+     *        由调用方算好传入: 本层不认识 `CatalogConfig`, 也不该认识。
      */
-    saveGameResult(gameName: string, result: GameResult): void {
+    saveGameResult(gameName: string, result: GameResult, configFingerprint: string): void {
         const state = this.read();
 
         if ('error' in result) {
@@ -115,6 +129,9 @@ export class DataStore {
             // 半截记录会让新鲜度判定读到"有记录但 readAt 是空的", 把简单的是非题变成特例。
             if (!previous) return;
 
+            // ⚠️ **指纹保持不变**, 因为留下的数据也确实还是上一次成功时那份配置抓的。
+            // 换成本轮(可能已经改过)的指纹, 就会把一份旧配置的数据标成"新鲜",
+            // 正是本字段要防的那种错
             state.games[gameName] = { ...previous, lastError: result.error };
             this.write(state);
 
@@ -125,6 +142,7 @@ export class DataStore {
             readAt: result.readAt,
             zones: result.zones,
             missing: result.missing,
+            configFingerprint,
             lastError: null,
         };
 
@@ -184,6 +202,10 @@ export function sanitizeDataState(raw: unknown): DataState {
             missing: Array.isArray(value.missing)
                 ? value.missing.filter((name): name is string => typeof name === 'string')
                 : [],
+            // 旧文件（该字段出现之前写下的）落成空串: 指纹与当前配置必然对不上 → 判过期
+            // → 重抓一次。宁可多抓一轮, 不可把一份来历不明的数据当新的用
+            configFingerprint:
+                typeof value.configFingerprint === 'string' ? value.configFingerprint : '',
             lastError: typeof value.lastError === 'string' ? value.lastError : null,
         };
     }

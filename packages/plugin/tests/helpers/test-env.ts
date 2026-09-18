@@ -12,6 +12,8 @@ import { vi } from 'vitest';
 import type { OB11Message } from 'napcat-types/napcat-onebot';
 import type { NapCatPluginContext } from 'napcat-types/napcat-onebot/network/plugin/types';
 import { pluginState } from '../../src/core/state';
+import { configFingerprintOf } from '../../src/services/staleness';
+import { DataStore, type GameResult } from '../../src/store/data.store';
 
 export interface TestEnv {
     ctx: NapCatPluginContext;
@@ -192,6 +194,27 @@ export function createTestEnv(root?: string): TestEnv {
 export function readStateFile(env: TestEnv): unknown {
     const raw = env.readDataFile('state.json');
     return raw === null ? null : JSON.parse(raw);
+}
+
+/**
+ * 往 `data.json` 里播种一份抓取结果（= 一次成功抓取留下的东西）, 绕过抓取过程。
+ *
+ * 指纹默认取**当前配置**里的这个游戏——即"这份数据就是按现在这份配置抓下来的", 这是
+ * "判为新鲜"的常见前提。要造"配置改过而数据没跟上"的场景, 显式传 `fingerprint` 覆盖
+ * （传 `''` 就是"来历不明的旧数据"）。
+ */
+export function seedGameResult(
+    gameName: string,
+    result: GameResult,
+    fingerprint?: string,
+): void {
+    const catalog = pluginState.config.catalogs.find((item) => item.name === gameName);
+
+    DataStore.getInstance().saveGameResult(
+        gameName,
+        result,
+        fingerprint ?? (catalog ? configFingerprintOf(catalog) : ''),
+    );
 }
 
 /** 造一条群消息。`role` 是平台给的群成员身份 (`member` = 普通成员) */

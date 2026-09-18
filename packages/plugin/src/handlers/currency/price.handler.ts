@@ -4,6 +4,7 @@
  * 见设计文档 §12.2（手动刷新）与 §12.3（展示）。
  *
  * 抓取范围是**本会话订阅里过期的**（片 05）: 全部新鲜时不起浏览器, 直接展示。
+ * "过期"含配置指纹不符——改完区服组合保存后立刻执行本指令, 不会拿旧组合的数据顶包。
  * 抓取前先回执「正在获取…」, 再抢全局锁（占用则排队）; **轮到自己时重新计算**
  * 过期集合——排队期间别人可能已经抓过了, 此时直接复用。
  *
@@ -79,10 +80,9 @@ export async function priceHandler(
         return;
     }
 
-    const targetNames = targets.map((catalog) => catalog.name);
-
-    // 全部新鲜时不起浏览器, 直接展示（§12.2）——"手动刷新"的频率高于数据变化频率
-    const stale = getStaleGames(targetNames);
+    // 全部新鲜时不起浏览器, 直接展示（§12.2）——"手动刷新"的频率高于数据变化频率。
+    // ⚠️ "新鲜"的判断含**配置指纹**: 刚在 WebUI 改过区服组合时, 旧数据再新也不算数
+    const stale = getStaleGames(targets);
 
     /** 本轮抓取失败的游戏。展示这些游戏时头部要带「（数据未更新）」（§12.3） */
     const failed = new Set<string>();
@@ -95,7 +95,7 @@ export async function priceHandler(
             // ⚠️ 轮到自己时**重新计算**过期集合: 排队期间前一个持锁者（定时任务或
             // 另一个会话）可能已经把这些游戏抓过了, 此时直接复用, 不再起浏览器。
             // 这条早退路径**不带失败**: 数据是刚被前者抓新的, 不是旧值
-            const stillStale = getStaleGames(targetNames);
+            const stillStale = getStaleGames(targets);
             if (stillStale.length === 0) return;
 
             const { results } = await runScrapeRound(

@@ -20,9 +20,14 @@ import {
 } from '../../src/services/browser/status';
 import { installerDeps, resetInstallState } from '../../src/services/browser/chrome-installer';
 import type { DetectOptions } from '../../src/services/browser/launcher';
-import { DataStore } from '../../src/store/data.store';
 import { SessionStore } from '../../src/store/session.store';
-import { createTestEnv, groupMessage, readStateFile, type TestEnv } from '../helpers/test-env';
+import {
+    createTestEnv,
+    groupMessage,
+    readStateFile,
+    seedGameResult,
+    type TestEnv,
+} from '../helpers/test-env';
 
 let env: TestEnv;
 
@@ -205,7 +210,7 @@ describe('/chrome/install 与进度', () => {
 
 describe('/status — 各游戏最后抓取时间', () => {
     it('带上每个游戏自己的 `readAt`——仪表盘要显示"这个游戏的数据是什么时候的"', async () => {
-        DataStore.getInstance().saveGameResult('流放之路2', {
+        seedGameResult('流放之路2', {
             readAt: '2026-09-16T08:00:05.123Z',
             missing: [],
             zones: [],

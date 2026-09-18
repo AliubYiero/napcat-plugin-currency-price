@@ -14,6 +14,9 @@ import { createTestEnv, type TestEnv } from '../helpers/test-env';
 let env: TestEnv;
 let store: DataStore;
 
+/** 指纹在本层是**不透明字符串**——这里挑一个随便的值, 只验"原样落盘 / 不被覆盖" */
+const FINGERPRINT = 'fp:流放之路2';
+
 /** 一个成功的游戏抓取结果 */
 function okResult(): GameOk {
     return {
@@ -41,13 +44,14 @@ afterEach(() => {
 
 describe('DataStore — 落盘与读回', () => {
     it('成功结果落盘, 结构与设计文档 §7.2 一致（`lastError` 补 `null`）', () => {
-        store.saveGameResult('流放之路2', okResult());
+        store.saveGameResult('流放之路2', okResult(), FINGERPRINT);
 
         expect(JSON.parse(env.readDataFile('data.json') ?? '{}')).toEqual({
             version: 1,
             games: {
                 '流放之路2': {
                     readAt: '2026-09-16T08:00:05.123Z',
+                    configFingerprint: FINGERPRINT,
                     lastError: null,
                     missing: [],
                     zones: [
@@ -67,8 +71,8 @@ describe('DataStore — 失败不覆盖（§7.2 规则 2）', () => {
     const ERROR = '切换到 国服 / 赛季 / 普通 失败：Timeout 20000ms exceeded';
 
     it('本轮失败时 `zones` / `readAt` 保持上一次成功的内容, **只更新 `lastError`**', () => {
-        store.saveGameResult('流放之路2', okResult());
-        store.saveGameResult('流放之路2', { error: ERROR });
+        store.saveGameResult('流放之路2', okResult(), FINGERPRINT);
+        store.saveGameResult('流放之路2', { error: ERROR }, FINGERPRINT);
 
         const game = store.getGame('流放之路2');
 
@@ -78,20 +82,56 @@ describe('DataStore — 失败不覆盖（§7.2 规则 2）', () => {
     });
 
     it('失败后又成功一次, `lastError` 清回 `null`', () => {
-        store.saveGameResult('流放之路2', okResult());
-        store.saveGameResult('流放之路2', { error: ERROR });
-        store.saveGameResult('流放之路2', okResult());
+        store.saveGameResult('流放之路2', okResult(), FINGERPRINT);
+        store.saveGameResult('流放之路2', { error: ERROR }, FINGERPRINT);
+        store.saveGameResult('流放之路2', okResult(), FINGERPRINT);
 
         expect(store.getGame('流放之路2')?.lastError).toBe(null);
     });
 
     it('**从未成功抓到过的游戏**失败后不产生条目——没有数据就是没有, 不写半截记录充数', () => {
         // 先落一个别的游戏, 让文件存在——否则"失败的游戏不在文件里"是文件压根不存在造出来的假象
-        store.saveGameResult('流放之路2', okResult());
-        store.saveGameResult('火炬之光', { error: '页面未能加载出内容（可能被拦截）' });
+        store.saveGameResult('流放之路2', okResult(), FINGERPRINT);
+        store.saveGameResult('火炬之光', { error: '页面未能加载出内容（可能被拦截）' }, FINGERPRINT);
 
         expect(store.getGame('火炬之光')).toBe(null);
         expect(Object.keys(store.getGames())).toEqual(['流放之路2']);
+    });
+});
+
+describe('DataStore — 配置指纹（§9.2 新鲜度判定的第二个依据）', () => {
+    it('指纹原样落盘、原样读回', () => {
+        store.saveGameResult('流放之路2', okResult(), FINGERPRINT);
+
+        expect(store.getGame('流放之路2')?.configFingerprint).toBe(FINGERPRINT);
+    });
+
+    it('**失败不改指纹**——留下的数据确实还是上一次那份配置抓的', () => {
+        store.saveGameResult('流放之路2', okResult(), 'fp:旧配置');
+        store.saveGameResult('流放之路2', { error: '页面打不开' }, 'fp:新配置');
+
+        expect(store.getGame('流放之路2')?.configFingerprint).toBe('fp:旧配置');
+    });
+
+    it('**旧文件（写在本字段出现之前）读回空串**——与任何真实配置都对不上, 于是重抓一轮', () => {
+        fs.mkdirSync(env.dataPath, { recursive: true });
+        fs.writeFileSync(
+            path.join(env.dataPath, 'data.json'),
+            JSON.stringify({
+                version: 1,
+                games: {
+                    '流放之路2': {
+                        readAt: '2026-09-16T08:00:05.123Z',
+                        zones: [],
+                        missing: [],
+                        lastError: null,
+                    },
+                },
+            }),
+            'utf-8',
+        );
+
+        expect(store.getGame('流放之路2')?.configFingerprint).toBe('');
     });
 });
 
@@ -110,7 +150,7 @@ describe('DataStore — `null` 与 `0` 可区分（§7.2 规则 3）', () => {
                     ],
                 },
             ],
-        });
+        }, FINGERPRINT);
 
         const prices = store.getGame('流放之路2')?.zones[0]?.prices;
 
@@ -132,7 +172,7 @@ describe('DataStore — `null` 与 `0` 可区分（§7.2 规则 3）', () => {
                     ],
                 },
             ],
-        });
+        }, FINGERPRINT);
 
         const raw = env.readDataFile('data.json') ?? '';
 

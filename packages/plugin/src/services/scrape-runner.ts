@@ -15,6 +15,7 @@ import { ArchiveStore } from '../store/archive.store';
 import { DataStore, type GameResult } from '../store/data.store';
 import { ensureBrowserStatus } from './browser/status';
 import { scrapeGames } from './scraper';
+import { configFingerprintOf } from './staleness';
 
 /** 一轮抓取的结果 */
 export interface ScrapeRoundResult {
@@ -69,9 +70,13 @@ export async function runScrapeRound(
 
     const finishedAt = new Date().toISOString();
 
+    // 本轮**实际用的**配置指纹, 逐个游戏存下——下次判新鲜度时拿它与当时的配置比对。
+    // 取不到时落空串: 那份记录会一直判过期, 偏"多抓", 是安全的一侧
+    const fingerprints = new Map(catalogs.map((catalog) => [catalog.name, configFingerprintOf(catalog)]));
+
     const store = DataStore.getInstance();
     for (const [gameName, result] of Object.entries(results)) {
-        store.saveGameResult(gameName, result);
+        store.saveGameResult(gameName, result, fingerprints.get(gameName) ?? '');
     }
 
     const successCount = Object.keys(results).length - failedGamesOf(results).size;

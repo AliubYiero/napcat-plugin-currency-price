@@ -153,8 +153,10 @@ export async function schedulerTick(deps: SchedulerDeps = {}): Promise<void> {
         // 而那种轮次恰恰是最常见的（每小时推一次, 数据只有 5 分钟算新鲜）
         await runWithScrapeLock(async () => {
             // 后到者轮到自己时重算: 排队期间前一个持锁者（如手动抓取）可能已经
-            // 把这些游戏抓过了, 此时直接复用, 不再起浏览器
-            const stillStale = getStaleGames(union);
+            // 把这些游戏抓过了, 此时直接复用, 不再起浏览器。
+            // ⚠️ 用 `unionCatalogs`（配置里现存的）而非 `union`: 判断依据含配置指纹, 得拿
+            // 当前配置来算。被删掉的游戏本来就抓不了, 少它们不影响结果
+            const stillStale = getStaleGames(unionCatalogs);
             let failed = new Set<string>();
 
             if (stillStale.length > 0) {

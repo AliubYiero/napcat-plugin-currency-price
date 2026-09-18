@@ -9,9 +9,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CONFIG } from '../../src/config';
 import { pluginState } from '../../src/core/state';
 import { pushToSubscribers } from '../../src/services/notifier';
-import { DataStore } from '../../src/store/data.store';
 import { SessionStore } from '../../src/store/session.store';
-import { createTestEnv, type TestEnv } from '../helpers/test-env';
+import { createTestEnv, seedGameResult, type TestEnv } from '../helpers/test-env';
 
 let env: TestEnv;
 
@@ -43,7 +42,7 @@ afterEach(() => {
 
 /** 往 `data.json` 里塞一份成功数据（= 一次成功抓取留下的东西） */
 function seed(gameName: string, readAt = '2026-09-16T08:00:05.123Z'): void {
-    DataStore.getInstance().saveGameResult(gameName, {
+    seedGameResult(gameName, {
         readAt,
         missing: [],
         zones: [

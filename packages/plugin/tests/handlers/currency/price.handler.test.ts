@@ -19,9 +19,13 @@ import { priceHandlerDeps } from '../../../src/handlers/currency/price.handler';
 import { pushToSubscribers } from '../../../src/services/notifier';
 import { detectBrowserLightweight, invalidateBrowserStatus } from '../../../src/services/browser/status';
 import type { DetectOptions } from '../../../src/services/browser/launcher';
-import { DataStore } from '../../../src/store/data.store';
 import { SessionStore } from '../../../src/store/session.store';
-import { createTestEnv, groupMessage, type TestEnv } from '../../helpers/test-env';
+import {
+    createTestEnv,
+    groupMessage,
+    seedGameResult,
+    type TestEnv,
+} from '../../helpers/test-env';
 
 let env: TestEnv;
 
@@ -139,7 +143,7 @@ describe('price — 抓取与展示', () => {
         await subscribeAndStub('流放之路2', okResult());
 
         // 让 `data.json` 里留下一份**刚刚抓到的**数据: `readAt` 取当前时刻, 稳在 5 分钟窗口内
-        DataStore.getInstance().saveGameResult('流放之路2', {
+        seedGameResult('流放之路2', {
             ...okResult(),
             readAt: new Date().toISOString(),
         });
@@ -156,6 +160,49 @@ describe('price — 抓取与展示', () => {
         expect(scraped).toBe(0);
         expect(messages).toHaveLength(1);
         expect(messages[0]).toContain('流放之路2');
+    });
+
+    it('**改过区服组合后立刻刷新 → 重新抓取**, 不拿按旧组合抓的数据顶包', async () => {
+        // ⚠️ `readAt` 必须是**此刻**: 本用例要证的是"时间上新鲜但配置对不上", 若数据本身
+        // 已超 5 分钟, 那就是被时间维度判过期的, 指纹这条路径根本没被走到
+        await subscribeAndStub('流放之路2', {
+            ...okResult(),
+            readAt: new Date().toISOString(),
+        });
+
+        // 第一轮: `data.json` 里留下一份时间上"完全新鲜"的数据——但它按**旧组合**抓的
+        const first = await send(groupMessage('#currency price'));
+        expect(first).toContain('【国服 / 赛季 / 普通】');
+
+        // WebUI 的「分区配置」页改掉组合并保存（`POST /catalogs` 的效果: 写回内存配置）
+        pluginState.config = {
+            ...pluginState.config,
+            catalogs: pluginState.config.catalogs.map((catalog) =>
+                catalog.name === '流放之路2'
+                    ? { ...catalog, zoneConfigs: [['国际服', '赛季', '普通']] }
+                    : catalog,
+            ),
+        };
+
+        priceHandlerDeps.scrape = async () => ({
+            流放之路2: {
+                ...okResult(),
+                zones: [
+                    {
+                        zone: ['国际服', '赛季', '普通'],
+                        readAt: okResult().readAt,
+                        prices: [{ name: '神圣石', price: 0.1, unit: '元/个' }],
+                    },
+                ],
+            },
+        });
+
+        const messages = await sendAll(groupMessage('#currency price'));
+
+        // 回了执 = 真的起了抓取。只看 `readAt` 的话数据是新鲜的, 这一轮会整轮跳过
+        expect(messages[0]).toBe('正在获取通货价格数据，请稍等...');
+        expect(messages.at(-1)).toContain('【国际服 / 赛季 / 普通】');
+        expect(env.readDataFile('data.json')).toContain('国际服');
     });
 
     it('订阅多个游戏源时,**每个游戏一条独立的文本消息**', async () => {

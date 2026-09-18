@@ -11,12 +11,11 @@ import { pluginState } from '../../src/core/state';
 import { rearmScheduler, schedulerTick, SCHEDULER_TIMER_ID } from '../../src/services/scheduler';
 import type { SchedulerDeps } from '../../src/services/scheduler';
 import { SessionStore } from '../../src/store/session.store';
-import { DataStore } from '../../src/store/data.store';
 import { detectBrowserLightweight, invalidateBrowserStatus } from '../../src/services/browser/status';
 import type { DetectOptions } from '../../src/services/browser/launcher';
 import type { CatalogConfig } from '../../src/types';
 import { formatLocalTime } from '../../src/utils/time';
-import { createTestEnv, type TestEnv } from '../helpers/test-env';
+import { createTestEnv, seedGameResult, type TestEnv } from '../helpers/test-env';
 
 let env: TestEnv;
 
@@ -235,7 +234,7 @@ describe('schedulerTick — 触发后的动作序列', () => {
 
         // 预置一份 30 分钟前的旧数据 → 过期
         const oldReadAt = new Date(fixedNow() - 30 * 60_000).toISOString();
-        DataStore.getInstance().saveGameResult('流放之路2', okResult(oldReadAt));
+        seedGameResult('流放之路2', okResult(oldReadAt));
 
         const newReadAt = new Date(fixedNow()).toISOString();
         const stub = stubScrape({ 流放之路2: okResult(newReadAt) });
@@ -259,10 +258,7 @@ describe('schedulerTick — 触发后的动作序列', () => {
         subscribe('流放之路2');
 
         // 1 分钟前抓过 → 新鲜
-        DataStore.getInstance().saveGameResult(
-            '流放之路2',
-            okResult(new Date(fixedNow() - 60_000).toISOString()),
-        );
+        seedGameResult('流放之路2', okResult(new Date(fixedNow() - 60_000).toISOString()));
 
         const stub = stubScrape();
         await schedulerTick({ now: fixedNow, scrape: stub.scrape });
@@ -274,10 +270,7 @@ describe('schedulerTick — 触发后的动作序列', () => {
         subscribeWithNotify('流放之路2');
 
         // 1 分钟前抓过 → 新鲜, 本轮一个都不抓
-        DataStore.getInstance().saveGameResult(
-            '流放之路2',
-            okResult(new Date(fixedNow() - 60_000).toISOString()),
-        );
+        seedGameResult('流放之路2', okResult(new Date(fixedNow() - 60_000).toISOString()));
 
         const stub = stubScrape();
         await schedulerTick({ now: fixedNow, scrape: stub.scrape });
@@ -294,7 +287,7 @@ describe('schedulerTick — 触发后的动作序列', () => {
 
         // 30 分钟前的旧数据 → 过期 → 本轮会真的抓, 且这个抓是失败的
         const oldReadAt = new Date(fixedNow() - 30 * 60_000).toISOString();
-        DataStore.getInstance().saveGameResult('流放之路2', okResult(oldReadAt));
+        seedGameResult('流放之路2', okResult(oldReadAt));
 
         const stub = stubScrape({ 流放之路2: { error: '页面打不开' } });
         await schedulerTick({ now: fixedNow, scrape: stub.scrape });
@@ -378,10 +371,7 @@ describe('schedulerTick — 触发后的动作序列', () => {
         subscribe('流放之路2');
 
         // 30 分钟前的旧数据 → 触发时判过期, 会真的抓一把
-        DataStore.getInstance().saveGameResult(
-            '流放之路2',
-            okResult(new Date(fixedNow() - 30 * 60_000).toISOString()),
-        );
+        seedGameResult('流放之路2', okResult(new Date(fixedNow() - 30 * 60_000).toISOString()));
 
         // 抓取耗时 5 秒: 9:00:00 开始, 9:00:05 结束
         const stub = stubScrape();
