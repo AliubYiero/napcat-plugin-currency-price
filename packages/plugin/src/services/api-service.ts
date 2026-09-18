@@ -24,6 +24,7 @@ import { getInstallState, runInstall } from './browser/chrome-installer';
 import { detectBrowserFull, getBrowserStatus } from './browser/status';
 import { rearmScheduler } from './scheduler';
 import { DataStore } from '../store/data.store';
+import { SessionStore } from '../store/session.store';
 
 /**
  * API 层的依赖注入点。
@@ -135,7 +136,63 @@ export function registerApiRoutes(ctx: NapCatPluginContext): void {
         }
     });
 
+    // ==================== 分区配置（无鉴权）====================
+
+    /**
+     * 读取分区配置。
+     *
+     * 与 `plugin_get_config` 里的 `catalogs` 是**同一份内存配置**, 不是另存一处。
+     * `catalogs` 在 Schema 面板里没有控件 (见 `config.ts` 的说明), 这个端点就是它唯一的编辑入口。
+     */
+    router.getNoAuth('/catalogs', (_req, res) => {
+        res.json({ code: 0, data: pluginState.config.catalogs });
+    });
+
+    /**
+     * 保存分区配置。
+     *
+     * ⚠️ 走 `replaceConfig` 而非直接赋值: body 来自 WebUI, 一切外部输入的配置写回**必须**
+     * 经过 `sanitizeConfig`(见 docs/config-pattern.md 的核心约束 2)。前端校验只是体验优化,
+     * 不是防线——非法条目在这里丢弃、合法条目保留。
+     *
+     * `catalogs` 变化后调度器无需重启即按新配置触发 (§9.1)。
+     */
+    router.postNoAuth('/catalogs', (req, res) => {
+        try {
+            const body = req.body as Record<string, unknown> | undefined;
+            if (!body || !Array.isArray(body.catalogs)) {
+                return res.status(400).json({ code: -1, message: '缺少 catalogs 数组' });
+            }
+
+            pluginState.replaceConfig({
+                ...pluginState.config,
+                catalogs: body.catalogs,
+            } as import('../types').PluginConfig);
+            rearmScheduler();
+
+            ctx.logger.info('分区配置已保存');
+            res.json({ code: 0, message: 'ok' });
+        } catch (err) {
+            ctx.logger.error('保存分区配置失败:', err);
+            res.status(500).json({ code: -1, message: String(err) });
+        }
+    });
+
     // ==================== 群管理（无鉴权）====================
+
+    /**
+     * 会话订阅关系一览 —— 群管理页的真正数据源。
+     *
+     * ⚠️ **不是 `groupConfigs`**。`groupConfigs` 在本插件里只有「会话级启用开关」一个字段,
+     * 而用户真正关心的是"订阅了什么、收不收推送", 那在 `state.json` 里 (§7.1)。
+     * 读 `groupConfigs` 渲染出来的是一份没人读的死 UI。
+     *
+     * 每次现读 (见 `session.store.ts` 的说明), 因此群里刚敲的 `notify on` / `game add`
+     * 刷新页面就能看到。
+     */
+    router.getNoAuth('/sessions', (_req, res) => {
+        res.json({ code: 0, data: SessionStore.getInstance().getSessions() });
+    });
 
     /** 获取群列表（附带各群启用状态） */
     router.getNoAuth('/groups', async (_req, res) => {

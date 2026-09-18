@@ -1,7 +1,7 @@
 /** WebUI 前端类型定义 */
 import type { PluginConfig } from '@napcat-plugin-template/shared';
 
-export type { PluginConfig, GroupConfig, ApiResponse } from '@napcat-plugin-template/shared';
+export type { PluginConfig, GroupConfig, CatalogConfig, ApiResponse } from '@napcat-plugin-template/shared';
 
 export interface PluginStatus {
     pluginName: string
@@ -62,3 +62,19 @@ export interface GroupInfo {
     /** 定时推送时间（如 '08:30'），null 表示未设置（模板默认不使用，按需扩展） */
     scheduleTime?: string | null
 }
+
+/**
+ * 一个会话的订阅关系。来自 `/sessions`，即 `state.json` 的真实内容。
+ *
+ * ⚠️ **不是 `PluginConfig.groupConfigs`**。群管理页要展示的是"订阅了什么、收不收推送"，
+ * 那在 `state.json` 里；`groupConfigs` 在本插件里只有会话级启用开关一个字段。
+ */
+export interface SessionRecord {
+    /** 是否接收主动推送。**默认关闭**——订阅了游戏不等于要收推送 */
+    notifyEnabled: boolean
+    /** 该会话订阅的游戏名 */
+    enabledGames: string[]
+}
+
+/** `/sessions` 的返回：会话键（`group:555` / `private:789`）→ 订阅关系 */
+export type SessionMap = Record<string, SessionRecord>
