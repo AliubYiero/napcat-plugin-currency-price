@@ -7,6 +7,7 @@
         "build": "pnpm --filter @napcat-plugin-template/webui build && pnpm --filter napcat-plugin-currency-price build",
         "dev:webui": "pnpm --filter @napcat-plugin-template/webui dev",
         "watch": "pnpm --filter napcat-plugin-currency-price watch",
+        "help:generate": "pnpm --filter napcat-plugin-currency-price help:generate",
         "typecheck": "pnpm -r typecheck",
         "format": "biome format --write"
     },

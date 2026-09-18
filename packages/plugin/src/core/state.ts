@@ -73,8 +73,9 @@ export function sanitizeConfig(raw: unknown): PluginConfig {
     if (typeof raw.allowAtBotTrigger === 'boolean') {
         out.allowAtBotTrigger = raw.allowAtBotTrigger;
     }
-    // 前缀是空串时保留默认: 空前缀会让**所有**消息都进入指令链路
-    if (isNonEmptyString(raw.commandPrefix)) out.commandPrefix = raw.commandPrefix;
+    // ⚠️ `commandPrefix` **刻意不从外部输入读取**: 它是开发期常量 (改 `config.ts` 的
+    // DEFAULT_CONFIG, 并同步重跑 `pnpm help:generate`——前缀是烧进帮助图片的)。
+    // 允许 WebUI / 配置文件改它, 就会出现"帮助图上的指令敲不出来"这种对不上账的状态。
     if (typeof raw.chromeExecutablePath === 'string') {
         out.chromeExecutablePath = raw.chromeExecutablePath;
     }

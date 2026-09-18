@@ -63,7 +63,14 @@ export const CATALOGS: CatalogConfig[] = [
     },
 ];
 
-/** 默认配置 */
+/**
+ * 默认配置
+ *
+ * ⚠️ `commandPrefix` 是**开发期常量**, 而非用户配置项: 它被烧进帮助图片与文本映射
+ * (`scripts/generateHelp/` 从本对象读它当渲染用的前缀)。改这一行之后**必须**重跑
+ * `pnpm help:generate`, 否则用户看到的帮助里的指令敲不出来。清洗层刻意忽略外部输入,
+ * 见 `core/state.ts` 的 `sanitizeConfig`。
+ */
 export const DEFAULT_CONFIG: PluginConfig = {
     enabled: true,
     debug: false,
@@ -105,13 +112,9 @@ export function buildConfigSchema(ctx: NapCatPluginContext): PluginConfigSchema 
         `),
         ctx.NapCatConfig.boolean('enabled', '启用插件', true, '关闭后不响应任何指令，也不做定时推送'),
         ctx.NapCatConfig.boolean('debug', '调试模式', false, '启用后输出详细的调试日志，含抓取细节'),
-        ctx.NapCatConfig.text(
-            'commandPrefix',
-            '指令前缀',
-            DEFAULT_CONFIG.commandPrefix,
-            '触发指令的前缀。修改后即时生效，无需重启',
-            true,
-        ),
+        // ⚠️ `commandPrefix` 刻意**不在此生成控件**: 它是开发期常量, 不是用户配置项——
+        // 前缀被烧进帮助图片 (`pnpm help:generate` 的产物), 运行期能改就意味着图上的
+        // 指令与实际生效的指令可能对不上。改它 = 改 `DEFAULT_CONFIG` + 重跑生成。
         ctx.NapCatConfig.text(
             'adminUsers',
             '超级管理员 QQ 号',

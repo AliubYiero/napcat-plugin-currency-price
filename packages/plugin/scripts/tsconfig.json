@@ -1,0 +1,11 @@
+{
+    "extends": "../tsconfig.json",
+    "compilerOptions": {
+        "rootDir": ".",
+        "types": ["node"],
+        // 脚本由 node 直接跑 (原生类型剥离), 相对导入必须带 .ts 后缀
+        "allowImportingTsExtensions": true,
+        "noEmit": true
+    },
+    "include": ["./**/*.ts"]
+}

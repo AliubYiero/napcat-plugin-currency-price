@@ -1,78 +1,41 @@
 /**
- * 帮助指令
+ * 帮助指令 (`{prefix}` 与 `{prefix} help` 都路由到这里)
  *
- * ⚠️ **本片只做文本帮助**。图片优先 / 文本回退的完整链路 (权威源 → 生成脚本 → 三张 PNG
- * + `helpText.generated.ts`) 在帮助输出片落地, 届时本文件的内容由生成产物替换,
- * 只保留变体选择与发送。
+ * 本文件**只声明"哪些图片文件对应哪些变体"**, 不写任何帮助内容:
+ * 内容与文本在 `scripts/generateHelp/cmds/currency-price.ts` (权威源) 里,
+ * 由 `pnpm help:generate` 产出三张 PNG 与本目录的 `helpText.generated.ts`。
+ * 选变体与图片/文本的回退在 `src/utils/helpMessage.ts`。
  *
- * 变体映射见 docs/help-output-pattern.md 的"变体映射"节。
+ * ⚠️ **不要在这里写帮助文本**——手写的文案不会随权威源更新, 两处内容必然分叉。
  */
 
-import type { NapCatPluginContext } from 'napcat-types/napcat-onebot/network/plugin/types';
 import type { OB11Message } from 'napcat-types/napcat-onebot';
+import type { NapCatPluginContext } from 'napcat-types/napcat-onebot/network/plugin/types';
 import type { UserRole } from '../../core/admin';
-import { pluginState } from '../../core/state';
-import { sendReply } from '../utils';
-
-/** 帮助输出版本档位。**与权限档位不是一一对应** (群聊超管输出 admin 版)。 */
-export type HelpVariant = 'user' | 'admin' | 'superAdmin';
+import { sendHelpMessage, type HelpVariant } from '../../utils/helpMessage';
+import { HELP_TEXT_MAP } from './helpText.generated';
 
 /**
- * 由「角色 + 会话类型」共同决定输出版本
+ * 各变体对应的帮助图片
  *
- * 两个反直觉点, 不要"顺手统一":
- * - `privateUser` (好友私聊) 等同 admin 权限组 → 输出 **admin** 版;
- * - **群聊里的超管输出 admin 版而非 superAdmin 版**——SuperAdmin 版含仅私聊可用的指令,
- *   在群里输出会误导用户。只有私聊里的超管才看到完整版。
+ * 纯命名映射, 无内容; 文件名由生成脚本按 `{cmdId}-{Role}.png` 落盘到 `src/assets/`,
+ * 构建时复制进插件根目录的 `assets/`。
  */
-export function getHelpVariant(userRole: UserRole): HelpVariant {
-    switch (userRole.role) {
-        case 'superAdmin':
-            return userRole.from.type === 'private' ? 'superAdmin' : 'admin';
-        case 'privateUser':
-        case 'admin':
-            return 'admin';
-        case 'user':
-            return 'user';
-    }
-}
+const HELP_IMAGE: Record<HelpVariant, string> = {
+    user: 'napcat-plugin-currency-price-User.png',
+    admin: 'napcat-plugin-currency-price-Admin.png',
+    superAdmin: 'napcat-plugin-currency-price-SuperAdmin.png',
+};
 
-/**
- * 文本帮助内容。
- *
- * ⚠️ 临时内容: 只列**真正可用**的指令, 不预告尚未实现的指令——列了就是骗用户,
- * 也**不留"待实现"之类的空话**。帮助输出片会用生成产物整体替换。
- */
-function buildHelpText(variant: HelpVariant, prefix: string): string {
-    const lines = [
-        `[= 千岛通货价格 =]`,
-        `${prefix} help          显示本帮助`,
-        `${prefix} status        查看本会话的通知与订阅`,
-        `${prefix} notify        查看本会话通知开关`,
-        `${prefix} game          列出可订阅的游戏`,
-    ];
-
-    if (variant === 'admin' || variant === 'superAdmin') {
-        lines.push(
-            '',
-            '管理指令',
-            `${prefix} notify on|off            开启／关闭本会话通知`,
-            `${prefix} game add|remove <游戏名...>  订阅／退订游戏 (可空格分隔多个)`,
-        );
-    }
-
-    return lines.join('\n');
-}
-
-/** `#currency` / `#currency help` */
+/** `{prefix}` / `{prefix} help` */
 export async function helpHandler(
     ctx: NapCatPluginContext,
     event: OB11Message,
     _commands: string[],
-    userRole: UserRole,
+    _userRole: UserRole,
 ): Promise<void> {
-    const variant = getHelpVariant(userRole);
-    const text = buildHelpText(variant, pluginState.config.commandPrefix);
-
-    await sendReply(ctx, event, text);
+    await sendHelpMessage(ctx, event, {
+        imageMap: HELP_IMAGE,
+        textMap: HELP_TEXT_MAP,
+    });
 }

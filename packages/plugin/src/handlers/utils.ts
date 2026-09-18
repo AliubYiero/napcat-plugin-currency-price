@@ -5,9 +5,22 @@
  * 集中在此处是为了让发送失败的处理、目标推断与日志格式只有一份实现。
  */
 
+import { OB11MessageDataType } from 'napcat-types/napcat-onebot';
 import type { OB11Message, OB11PostSendMsg } from 'napcat-types/napcat-onebot';
 import type { NapCatPluginContext } from 'napcat-types/napcat-onebot/network/plugin/types';
 import { pluginState } from '../core/state';
+
+/**
+ * 创建图片消息段
+ *
+ * `file` 支持绝对路径 (帮助图片就是这么发的), 不必先转 base64。
+ */
+export function createImageMessage(file: string): OB11PostSendMsg['message'] {
+    return {
+        type: 'image' as OB11MessageDataType.image,
+        data: { file },
+    };
+}
 
 /**
  * 发送消息（通用）

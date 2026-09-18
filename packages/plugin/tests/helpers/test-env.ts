@@ -112,7 +112,12 @@ export function createTestEnv(root?: string): TestEnv {
         actions: {
             call: async (action: string, params: Record<string, unknown>) => {
                 if (action === 'send_msg') {
-                    const message = String(params.message);
+                    // 消息段数组 (如图片帮助) 落成 JSON, 单段文本原样落——断言按 `message` 的
+                    // 形态区分"发的是图"还是"发的是文本", 两者不能都压成 "[object Object]"
+                    const message =
+                        typeof params.message === 'string'
+                            ? params.message
+                            : JSON.stringify(params.message);
                     sent.push(message);
                     sentMessages.push({
                         messageType: String(params.message_type),

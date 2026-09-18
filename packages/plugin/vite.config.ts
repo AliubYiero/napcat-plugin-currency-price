@@ -209,6 +209,19 @@ function copyAssetsPlugin() {
                     console.log('[copy-assets] (o\'v\'o) 已复制 templates 目录');
                 }
 
+                // 5. 复制帮助图片到 dist/assets
+                //    运行时按「插件根目录/assets」找图（见 src/utils/helpMessage.ts），
+                //    漏了这一步的表现是帮助**静默降级成文本**——不报错，只是图没了。
+                const assetsSrc = resolve(__dirname, 'src/assets');
+                if (fs.existsSync(assetsSrc)) {
+                    copyDirRecursive(assetsSrc, resolve(distDir, 'assets'));
+                    console.log('[copy-assets] (o\'v\'o) 已复制 assets 目录到 dist/assets');
+                } else {
+                    console.error(
+                        "[copy-assets] (;_;) src/assets 不存在，帮助将只能发文本。请先执行 pnpm help:generate",
+                    );
+                }
+
                 console.log('[copy-assets] (*\'v\'*) 资源复制完成！');
             } catch (error) {
                 console.error('[copy-assets] (;_;) 资源复制失败:', error);

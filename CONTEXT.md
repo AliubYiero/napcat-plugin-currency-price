@@ -84,7 +84,7 @@ _Avoid_: 群、用户——都会丢掉"私聊也是订阅主体"这层含义。
 - **通知开关 (`notifyEnabled`): 默认关闭**。语义是"该会话是否接收主动推送"。默认关闭是领域决策, 原因: 机器人一旦装上就向所有群推送价格是不可接受的, 主动推送必须由用户显式订阅。
 - **定时推送小时集合 (`pushHours`): 默认全选** (`0`~`23`, 即每小时)。空数组是**合法语义**, 表示"不做定时推送", 不回退默认 (见 [docs/config-pattern.md](docs/config-pattern.md) 的枚举数组规则)。
 - **数据新鲜度阈值: 常量 5 分钟**。判定粒度是**游戏** (见上方"数据新鲜度阈值"), 阈值本身不是配置项——它属于领域语义, 与"用户会不会想改"无关。
-- 指令前缀: 缺省 `#currency`, 可经配置覆盖。
+- 指令前缀: **固定的 `#currency`**, **不是用户配置项**。它被烧进帮助图片与文本映射, 运行期可改就会出现"帮助图上的指令敲不出来"; 只能由开发者改源码 (`DEFAULT_CONFIG.commandPrefix`) 并**同步重跑帮助生成** (见 [docs/design.md](docs/design.md) §5.1 §19)。
 - 只有前缀、无参数 (如 `#currency` 单独出现) 时, 路由到帮助指令 (见 [docs/instruction-pattern.md](docs/instruction-pattern.md))。
 
 新增有默认值语义的配置项时, 在此处声明选择及理由; 难逆转的补 ADR (判据见 [docs/development-pattern.md](docs/development-pattern.md) 的"ADR 纪律")。

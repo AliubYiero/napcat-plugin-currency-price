@@ -111,10 +111,11 @@ describe('sanitizeConfig — 标量与数值', () => {
         expect(out.allowAtBotTrigger).toBe(true);
     });
 
-    it('空前缀回退默认（空前缀会让所有消息进入指令链路）', () => {
-        const out = sanitizeConfig({ commandPrefix: '   ' });
-
-        expect(out.commandPrefix).toBe('#currency');
+    it('**命令前缀不接受外部输入**（开发期常量, 只能改源码后重跑帮助生成）', () => {
+        // 允许 WebUI / 配置文件改前缀, 就会出现"帮助图上的指令敲不出来"
+        for (const attempt of ['/cp', '   ', 42, null]) {
+            expect(sanitizeConfig({ commandPrefix: attempt }).commandPrefix).toBe('#currency');
+        }
     });
 
     it('pushIntervalMs 为负数或非有限数时回退默认', () => {

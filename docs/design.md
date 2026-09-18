@@ -64,7 +64,7 @@
 | --- | --- | --- | --- |
 | `enabled` | `boolean` | `true` | 插件总开关 |
 | `debug` | `boolean` | `false` | 调试日志 |
-| `commandPrefix` | `string` | `#currency` | 指令前缀, 运行期可改 |
+| `commandPrefix` | `string` | `#currency` | 指令前缀。**开发期常量, 非用户配置项**: WebUI 不生成控件, 清洗层忽略外部写入。它被烧进帮助产物, 改它必须同步重跑 `help:generate` (§19) |
 | `adminUsers` | `string[]` | `[]` | 超管 QQ 号名单。WebUI 以逗号分隔文本输入, 清洗层一次性转数组 |
 | `allowAtBotTrigger` | `boolean` | `true` | 允许 `@机器人 + 指令` 触发 (见 [instruction-pattern](./instruction-pattern.md) 1.1) |
 | `catalogs` | `CatalogConfig[]` | 现有三分区 | 游戏配置。**不生成 Schema 控件**, 由自定义 WebUI 页编辑 |
@@ -447,7 +447,7 @@ type GameFail = { error: string };
 
 ### 11.1 指令表
 
-前缀 `#currency`（读自 `commandPrefix` 配置）。分发规则、命名空间、失败反馈见 [instruction-pattern.md](./instruction-pattern.md)。
+前缀 `#currency`（开发期常量 `DEFAULT_CONFIG.commandPrefix`，见 §5.1）。分发规则、命名空间、失败反馈见 [instruction-pattern.md](./instruction-pattern.md)。
 
 | 命名空间 | 指令 | 权限 | 作用域 | 行为 |
 | --- | --- | --- | --- | --- |

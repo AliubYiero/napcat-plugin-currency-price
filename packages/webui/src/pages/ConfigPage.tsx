@@ -74,12 +74,8 @@ export default function ConfigPage() {
                         checked={config.debug}
                         onChange={(v) => updateField('debug', v)}
                     />
-                    <InputRow
-                        label="指令前缀"
-                        desc="触发指令的前缀，修改后即时生效"
-                        value={config.commandPrefix}
-                        onChange={(v) => updateField('commandPrefix', v)}
-                    />
+                    {/* 指令前缀**不在此编辑**: 它是开发期常量——前缀被烧进帮助图片,
+                        运行期能改就会出现"图上的指令敲不出来"。见插件配置 config.ts */}
                     <InputRow
                         label="超级管理员 QQ 号"
                         desc="多个 QQ 号用英文逗号分隔。超管在别人的群里也能执行管理指令"
