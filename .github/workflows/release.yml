@@ -13,7 +13,6 @@ on:
 
 permissions:
   contents: write
-  actions: write
 
 jobs:
   build:
@@ -62,24 +61,40 @@ jobs:
 
       - name: Prepare release package
         env:
-          PLUGIN_NAME: napcat-plugin-template
+          # 构建产物在 packages/plugin/dist（见 packages/plugin/vite.config.ts 的 outDir）
+          DIST_DIR: packages/plugin/dist
+          PLUGIN_NAME: napcat-plugin-currency-price
         run: |
           # 创建临时目录用于组织文件
           mkdir -p release
 
           # 复制需要的文件到临时目录
-          cp dist/index.mjs release/
-          cp dist/package.json release/
-          cp -r dist/webui release/
+          cp "$DIST_DIR/index.mjs" release/
+          cp "$DIST_DIR/package.json" release/
+          # 必须随包发布：playwright-core 在**加载期**按 packageRoot 读取它，缺了会直接
+          # MODULE_NOT_FOUND，插件加载即失败（见 vite.config.ts 的 bundleShim 注释）
+          cp "$DIST_DIR/browsers.json" release/
+          cp -r "$DIST_DIR/webui" release/
+          # 帮助图片：运行时按「插件根目录/assets」查找，漏了表现为帮助**静默降级成文本**
+          if [ ! -d "$DIST_DIR/assets" ]; then
+            echo "::error::$DIST_DIR/assets 不存在，请先执行 pnpm help:generate"
+            exit 1
+          fi
+          cp -r "$DIST_DIR/assets" release/
 
           # 进入临时目录并压缩
           cd release
-          zip -r ../${PLUGIN_NAME}.zip index.mjs package.json webui
+          zip -r "../${PLUGIN_NAME}.zip" index.mjs package.json browsers.json webui assets
 
       - name: Verify zip contents
+        env:
+          PLUGIN_NAME: napcat-plugin-currency-price
         run: |
-          PLUGIN_NAME="napcat-plugin-template"
-          unzip -l ${PLUGIN_NAME}.zip
+          unzip -l "${PLUGIN_NAME}.zip"
+          # 缺件时的失败必须发生在发布前，而不是用户装完之后
+          for f in index.mjs package.json browsers.json webui assets; do
+            unzip -l "${PLUGIN_NAME}.zip" | grep -q " $f" || { echo "::error::发布包缺少 $f"; exit 1; }
+          done
 
       - name: Collect git log
         id: gitlog
@@ -240,26 +255,6 @@ jobs:
           body_path: CHANGELOG.md
           draft: false
           files: |
-            napcat-plugin-template.zip
+            napcat-plugin-currency-price.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 触发索引更新工作流
-      # 注意：默认 GITHUB_TOKEN 创建的 Release 不会触发 on.release 事件
-      # 因此需要手动通过 workflow_dispatch 触发 update-index.yml
-      - name: Trigger index update
-        if: success()
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            await github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'update-index.yml',
-              ref: 'main',
-              inputs: {
-                version: '${{ steps.version.outputs.version }}'
-              }
-            })
-            console.log('✅ 已触发 update-index.yml 工作流')
