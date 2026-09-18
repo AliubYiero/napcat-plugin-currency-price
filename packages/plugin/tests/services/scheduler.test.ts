@@ -116,17 +116,11 @@ function okResult(readAt: string) {
     };
 }
 
-describe('rearmScheduler — 停摆条件（两个, 同一处处理）', () => {
+describe('rearmScheduler — 停摆条件（两个, 都是"人明确关掉了"）', () => {
     it('`pushHours` 为**空数组** → 不挂定时器（空数组是合法语义, 不是回退默认全选）', () => {
         pluginState.config = { ...pluginState.config, pushHours: [] };
         subscribe('流放之路2');
 
-        rearmScheduler({ now: fixedNow });
-
-        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(false);
-    });
-
-    it('**订阅并集为空** → 不挂定时器', () => {
         rearmScheduler({ now: fixedNow });
 
         expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(false);
@@ -141,13 +135,55 @@ describe('rearmScheduler — 停摆条件（两个, 同一处处理）', () => {
         expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(false);
     });
 
-    it('**浏览器不可用 → 不挂调度器**（片 06 的规则在这里落地）', () => {
+    it('**订阅并集为空照挂定时器**——"还没人订阅"是暂时状态, 定时器不能先跑掉', () => {
+        rearmScheduler({ now: fixedNow });
+
+        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(true);
+    });
+
+    it('**浏览器不可用照挂定时器**——装好浏览器后没有任何东西会重挂它', () => {
         detectBrowserLightweight(WITHOUT_CHROME);
         subscribe('流放之路2');
 
         rearmScheduler({ now: fixedNow });
 
-        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(false);
+        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(true);
+    });
+});
+
+/**
+ * 回归: 定时器"消失"之后没人把它带回来, 于是开了通知也永远收不到推送。
+ *
+ * 这两条走完整链路: 先在一个**暂时性状态**下挂上定时器 → 状态在两次轮询之间恢复
+ * （期间**没有任何** `rearmScheduler` 调用, 正如群里敲 `game add` / 装好浏览器时那样）
+ * → 到点必须真的抓一把。
+ */
+describe('定时器一直在跑 —— 暂时性状态恢复后, 到点自然恢复抓取', () => {
+    it('挂的时候没人订阅 → 中途 `game add` → 到点照样抓', async () => {
+        const stub = stubScrape();
+        rearmScheduler({ now: fixedNow, scrape: stub.scrape });
+
+        // 08:40 群里订阅（不经过任何重挂路径）
+        subscribe('流放之路2');
+
+        await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+
+        expect(stub.calls).toEqual([['流放之路2']]);
+    });
+
+    it('挂的时候浏览器不可用 → 中途装好浏览器 → 到点照样抓', async () => {
+        detectBrowserLightweight(WITHOUT_CHROME);
+        subscribe('流放之路2');
+
+        const stub = stubScrape();
+        rearmScheduler({ now: fixedNow, scrape: stub.scrape });
+
+        // 08:50 装好了浏览器, 只有一次状态检测, 没有重挂
+        detectBrowserLightweight(WITH_CHROME);
+
+        await vi.advanceTimersByTimeAsync(30 * 60 * 1000);
+
+        expect(stub.calls).toEqual([['流放之路2']]);
     });
 });
 
@@ -296,6 +332,27 @@ describe('schedulerTick — 触发后的动作序列', () => {
         expect(stub.calls).toHaveLength(1);
         await vi.advanceTimersByTimeAsync(60 * 60 * 1000);
         expect(stub.calls).toHaveLength(2);
+    });
+
+    it('**浏览器不可用 → 空转一轮**: 不抓不推, 但定时器照挂到下一个整点（§14）', async () => {
+        detectBrowserLightweight(WITHOUT_CHROME);
+        subscribeWithNotify('流放之路2');
+
+        const stub = stubScrape();
+        await schedulerTick({ now: fixedNow, scrape: stub.scrape });
+
+        expect(stub.calls).toHaveLength(0);
+        expect(env.sent).toHaveLength(0);
+        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(true);
+    });
+
+    it('**没有会话订阅游戏 → 空转一轮**: 不抓不推, 但定时器照挂', async () => {
+        const stub = stubScrape();
+        await schedulerTick({ now: fixedNow, scrape: stub.scrape });
+
+        expect(stub.calls).toHaveLength(0);
+        expect(env.sent).toHaveLength(0);
+        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(true);
     });
 
     it('运行中 `pushHours` 被清空 → 触发后**不再重挂**（停摆检查在触发后再做一次）', async () => {

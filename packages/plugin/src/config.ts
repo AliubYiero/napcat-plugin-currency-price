@@ -111,7 +111,6 @@ export function buildConfigSchema(ctx: NapCatPluginContext): PluginConfigSchema 
             </div>
         `),
         ctx.NapCatConfig.boolean('enabled', '启用插件', true, '关闭后不响应任何指令，也不做定时推送'),
-        ctx.NapCatConfig.boolean('debug', '调试模式', false, '启用后输出详细的调试日志，含抓取细节'),
         // ⚠️ `commandPrefix` 刻意**不在此生成控件**: 它是开发期常量, 不是用户配置项——
         // 前缀被烧进帮助图片 (`pnpm help:generate` 的产物), 运行期能改就意味着图上的
         // 指令与实际生效的指令可能对不上。改它 = 改 `DEFAULT_CONFIG` + 重跑生成。
@@ -141,7 +140,7 @@ export function buildConfigSchema(ctx: NapCatPluginContext): PluginConfigSchema 
                 value: hour,
             })),
             [...VALID_PUSH_HOURS],
-            '在选中的整点抓取并推送（本地时间）。**全部取消勾选 = 不做定时推送**，不是回退成全选',
+            '在选中的整点抓取并推送（本地时间）',
             true,
         ),
         ctx.NapCatConfig.text(
