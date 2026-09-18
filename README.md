@@ -1,333 +1,214 @@
-# NapCat 插件开发模板
+# 千岛通货价格 · NapCat 插件
 
-一个快速开始 NapCat 插件开发的模板项目，基于实际生产项目架构提炼而成。
+定时抓取[千岛](https://qiandao.com)各游戏专区的通货价格，按**会话**的订阅关系推送到 QQ 群聊 / 私聊。
 
-## 📁 项目结构
+- 插件 ID: `napcat-plugin-currency-price`
+- 支持平台: Windows / Linux
+- 最低 NapCat 版本: `4.14.0`
+
+## 它做什么
+
+千岛的每个游戏专区（流放之路2、流放之路1、火炬之光……）都有自己的页面、自己的区服清单、自己的通货清单。
+本插件用浏览器打开这些页面、逐区服切过去，把配置里指定的通货价格读下来，落到本地数据文件，再按需展示或推送。
+
+- **订阅粒度是游戏**，不是区服。用户 `game add 流放之路2` 就订下了这个游戏，
+  抓哪些区服组合由管理员在「分区配置」里决定。
+- **推送是显式订阅**。装上插件不会自动往任何群发消息，必须有人在会话里 `notify on`。
+- **数据有 5 分钟新鲜度窗口**。新鲜的数据直接复用，不重复起浏览器；
+  数据是否"新鲜"同时看它是不是按**当前这份配置**抓的——刚改完区服组合就敲 `price`，
+  端出来的不会是旧组合的价格。
+
+## 指令
+
+指令前缀固定为 `#currency`（开发期常量，不是配置项，见 [CONTEXT.md](CONTEXT.md)）。
+单独发送前缀等同于 `#currency help`。
+
+| 指令 | 权限 | 说明 |
+|------|------|------|
+| `#currency price` | 所有人 | 抓取并展示本会话订阅的全部游戏价格 |
+| `#currency help` | 所有人 | 帮助（图片，无法渲染时降级为文本） |
+| `#currency status` | 所有人 | 本会话的通知开关、已订阅游戏、各游戏数据时间 |
+| `#currency game` | 所有人 | 列出可订阅的游戏，标出本会话已订阅的 |
+| `#currency game add <游戏名...>` | 管理员 | 订阅游戏，可空格分隔多个 |
+| `#currency game remove <游戏名...>` | 管理员 | 退订游戏，可空格分隔多个 |
+| `#currency notify` | 所有人 | 查看本会话的定时推送开关 |
+| `#currency notify on \| off` | 管理员 | 开启 / 关闭本会话的定时推送 |
+
+### 权限档位
+
+角色从消息事件**推导**，不维护"用户 → 权限"的配置表（超管名单除外）：
+
+| 档位 | 来源 |
+|------|------|
+| `superAdmin` | 在 `adminUsers` 名单里。在别人的群里也能执行管理指令 |
+| `privateUser` | 机器人的**好友**私聊（群临时会话、陌生人不算） |
+| `admin` | 群主 / 群管理员（取消息事件里平台给的 `owner` / `admin`） |
+| `user` | 其他所有人 |
+
+指令失败一律**显式回复**（权限不足 / 未知指令 / 非法参数三类文案各不相同），
+不采用静默策略，见 [ADR-0002](docs/adr/0002-explicit-failure-feedback-over-silence.md)。
+
+### 展示格式
+
+**一个游戏一条消息**，按会话的订阅顺序串行发出，相邻两条之间隔 `pushIntervalMs`：
 
 ```
-napcat-plugin-template/
-├── packages/
-│   ├── plugin/               # 插件后端（发布物）
-│   │   ├── package.json      # 插件元信息（name / napcat 字段等）
-│   │   ├── vite.config.ts    # Vite 构建配置（含资源复制插件）
-│   │   ├── tsconfig.json
-│   │   └── src/
-│   │       ├── index.ts              # 插件入口，导出生命周期函数
-│   │       ├── config.ts             # 配置定义和 WebUI Schema
-│   │       ├── types.ts              # 类型定义（从 shared 重导出）
-│   │       ├── core/
-│   │       │   └── state.ts          # 全局状态管理单例
-│   │       ├── handlers/
-│   │       │   └── message-handler.ts # 消息处理器（命令解析、CD 冷却、消息工具）
-│   │       └── services/
-│   │           └── api-service.ts    # WebUI API 路由（无认证模式）
-│   ├── webui/                # React SPA 前端（独立构建）
-│   │   ├── package.json
-│   │   ├── index.html
-│   │   ├── vite.config.ts
-│   │   ├── tailwind.config.js
-│   │   ├── tsconfig.json
-│   │   └── src/
-│   │       ├── App.tsx           # 应用根组件，页面路由
-│   │       ├── main.tsx          # React 入口
-│   │       ├── index.css         # TailwindCSS + 自定义样式
-│   │       ├── types.ts          # 前端类型定义（从 shared 重导出）
-│   │       ├── vite-env.d.ts     # Vite 环境声明
-│   │       ├── utils/
-│   │       │   └── api.ts        # API 请求封装（noAuthFetch / authFetch）
-│   │       ├── hooks/
-│   │       │   ├── useStatus.ts  # 状态轮询 Hook
-│   │       │   ├── useTheme.ts   # 主题切换 Hook
-│   │       │   └── useToast.ts   # Toast 通知 Hook
-│   │       ├── components/
-│   │       │   ├── Sidebar.tsx       # 侧边栏导航
-│   │       │   ├── Header.tsx        # 页面头部
-│   │       │   ├── ToastContainer.tsx # Toast 通知容器
-│   │       │   └── icons.tsx         # SVG 图标组件
-│   │       └── pages/
-│   │           ├── StatusPage.tsx  # 仪表盘页面
-│   │           ├── ConfigPage.tsx  # 配置管理页面
-│   │           └── GroupsPage.tsx  # 群管理页面
-│   └── shared/               # 前后端共享类型（单一事实来源）
-│       ├── package.json
-│       └── src/
-│           └── index.ts      # PluginConfig / GroupConfig / ApiResponse 等
-├── .github/
-│   ├── workflows/
-│   │   └── release.yml        # CI/CD 自动构建发布
-│   ├── prompt/
-│   │   ├── default.md             # 默认 Release Note 模板（回退用）
-│   │   └── ai-release-note.md     # （可选）AI Release Note 自定义 Prompt
-│   └── copilot-instructions.md  # Copilot 上下文说明
-├── package.json              # workspace 根（仅编排脚本）
-├── pnpm-workspace.yaml
-├── tsconfig.base.json        # 基础 TS 配置（各包 extends）
-├── biome.json
-└── README.md
+「流放之路2」2026-09-18 21:00 实时千岛通货价格
+【国服 / 赛季 / 普通】
+ · 神圣石 1.23
+【国际服 / 赛季 / 普通】
+ · 神圣石 0.98
 ```
 
-## 🚀 快速开始
+- 一个区服只有一条数据时不编号，用 ` · ` 打头。
+- 价格为空或为 `0` 的行不展示，在末尾交代跳过了几条。
+- 配置里写了、但站点上不存在的通货名**单独成行**——这是配置写错时唯一的可见信号。
+- 本轮抓取失败、展示的是旧值时，标题带「（数据未更新）」。
 
-### 1. 安装依赖
+## 安装
+
+### 方式一：从 Release 安装（推荐）
+
+从 [Releases](https://github.com/AliubYiero/napcat-plugin-currency-price/releases) 下载 zip，
+解压到 NapCat 的插件目录后重载插件。
+
+### 方式二：从源码构建
 
 ```bash
 pnpm install
+pnpm build          # 构建 WebUI + 插件后端
 ```
 
-### 2. 修改插件信息
+产物在 `packages/plugin/dist/`，把它复制到 NapCat 插件目录即可。
 
-编辑 `packages/plugin/package.json`，修改以下字段：
+## 配置
 
-```json
-{
-    "name": "napcat-plugin-your-name",
-    "description": "你的插件描述",
-    "author": "你的名字"
-}
-```
+### 通用配置项（NapCat 配置面板）
 
-### 3. 开发你的功能
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `enabled` | `true` | 关闭后不响应任何指令，也不做定时推送 |
+| `adminUsers` | 空 | 超管 QQ 号，多个用英文逗号分隔 |
+| `allowAtBotTrigger` | `true` | 允许 `@机器人 #currency help` 触发 |
+| `pushIntervalMs` | `100` | 逐条推送之间的间隔。被 QQ 频控时调大 |
+| `pushHours` | `0`~`23` 全选 | 在选中的整点抓取并推送（本地时间）。**清空 = 不推送**，是合法配置 |
+| `chromeExecutablePath` | 空 | 浏览器可执行文件路径。留空走自动检测，仅在检测失败时手填 |
 
-- **添加配置项**: 编辑 `packages/shared/src/index.ts`（前后端类型同步生效）和 `packages/plugin/src/config.ts`
-- **消息处理**: 编辑 `packages/plugin/src/handlers/message-handler.ts`
-- **API 路由**: 编辑 `packages/plugin/src/services/api-service.ts`
-- **状态管理**: 编辑 `packages/plugin/src/core/state.ts`
-- **WebUI 页面**: 编辑 `packages/webui/src/pages/` 下的页面组件
+### 分区配置（插件页面 →「分区配置」）
 
-### 4. 构建 & 开发
+`catalogs` 含 `zoneConfigs: string[][]`，NapCat 的配置 Schema 没有数组 / 表格控件，
+因此它**不在配置面板里**，唯一的编辑入口是插件 WebUI 的「分区配置」页。
 
-```bash
-# 完整构建（webui 前端 + 插件后端 + 资源复制，一步完成）
-pnpm run build
+每个游戏一条配置：
 
-# 仅构建 WebUI 前端（不构建后端）
-pnpm --filter @napcat-plugin-template/webui build
-
-# WebUI 前端开发服务器（实时预览，推荐纯前端开发时使用）
-pnpm run dev:webui
-
-# 类型检查（全部包）
-pnpm run typecheck
-```
-
-### 5. 调试 & 热重载
-
-项目通过 Vite 插件 `napcatHmrPlugin` 集成了热重载能力（已在 `vite.config.ts` 中配置），需要在 NapCat 端安装 `napcat-plugin-debug` 插件并启用。
-
-```bash
-# 一键部署：构建 → 自动复制到远程插件目录 → 自动重载
-pnpm run deploy
-
-# 开发模式：watch 构建 + 每次构建后自动部署 + 热重载（单进程）
-pnpm run dev
-```
-
-> `deploy` = `vite build`（构建完成时 Vite 插件自动部署+重载）  
-> `dev` = `vite build --watch`（每次重新构建后 Vite 插件自动部署+重载）  
-> 以上命令需在 `packages/plugin` 目录下运行（或用 `pnpm --filter napcat-plugin-currency-price exec ...`）。
-
-> **注意**：`pnpm run dev` 仅监听**插件后端**（`packages/plugin/src` 下非 webui 的文件）的变化。修改 WebUI 前端代码后，需先重新构建 WebUI（`pnpm --filter @napcat-plugin-template/webui build`），再重跑后端构建即可随插件一起部署。
->
-> 如果只开发 WebUI 前端，推荐使用 `pnpm run dev:webui` 启动前端开发服务器，可实时预览。
-
-`packages/plugin/vite.config.ts` 中的 `copyAssetsPlugin` 会在构建时复制 WebUI 构建产物（由根 `pnpm run build` 先行构建），`napcatHmrPlugin()` 会自动连接调试服务 → 复制 dist/ 到远程 → 调用 reloadPlugin。
-
-如需自定义调试服务地址或 token：
-
-```typescript
-// vite.config.ts
-napcatHmrPlugin({
-  wsUrl: 'ws://192.168.1.100:8998',
-  token: 'mySecret',
-})
-```
-
-**CLI 交互模式（可选）：**
-
-```bash
-# 独立运行 CLI，进入交互模式（REPL）
-npx napcat-debug
-
-# 交互命令
-debug> list              # 列出所有插件
-debug> deploy            # 部署当前目录插件
-debug> reload <id>       # 重载指定插件
-debug> status            # 查看服务状态
-```
-
-构建产物在 `dist/` 目录下：
-
-```
-dist/
-├── index.mjs           # 插件主入口（Vite 打包）
-├── package.json        # 清理后的 package.json
-└── webui/              # React SPA 构建产物
-    └── index.html      # 单文件 SPA（vite-plugin-singlefile）
-```
-
-## 📖 架构说明
-
-### 分层架构
-
-```mermaid
-graph TD
-    Entry["index.ts (入口)<br/>生命周期钩子 + WebUI 路由/静态资源注册 + 事件分发"]
-    Entry --> Handlers["Handlers<br/>消息处理入口"]
-    Entry --> Services["Services<br/>业务逻辑"]
-    Entry --> WebUI["WebUI<br/>前端界面"]
-    Handlers --> State["core/state<br/>全局状态单例"]
-    Services --> State
-```
-
-### 核心设计模式
-
-| 模式 | 实现位置 | 说明 |
-|------|----------|------|
-| 单例状态 | `packages/plugin/src/core/state.ts` | `pluginState` 全局单例，持有 ctx、config、logger |
-| 服务分层 | `packages/plugin/src/services/*.ts` | 按职责拆分业务逻辑 |
-| 共享类型 | `packages/shared` | 前后端类型单一事实来源 |
-| 配置校验 | `sanitizeConfig()` | 类型安全的运行时配置验证 |
-| CD 冷却 | `cooldownMap` | `Map<groupId:command, expireTimestamp>` |
-
-## 🔧 生命周期函数
-
-| 导出 | 说明 |
+| 字段 | 说明 |
 |------|------|
-| `plugin_init` | 插件初始化，加载配置、注册路由 |
-| `plugin_onmessage` | 消息事件处理 |
-| `plugin_cleanup` | 插件卸载，清理资源 |
-| `plugin_config_ui` | WebUI 配置 Schema |
-| `plugin_get_config` | 获取配置 |
-| `plugin_set_config` | 设置配置 |
-| `plugin_on_config_change` | 配置变更回调 |
+| `name` | 游戏名。同时是数据文件的键与 `game add <游戏名>` 的参数，**精确匹配** |
+| `pageUrl` | 站点页面 URL，**原样存整条**（含六个 query 参数），从浏览器地址栏复制即可 |
+| `currencyList` | 要抓的通货名，与站点名称精确匹配 |
+| `zoneConfigs` | 要抓的区服组合，**层数随游戏而变**（流放之路 3 级、火炬之光 2 级） |
 
-## 🌐 WebUI API 路由
+默认配置里预置了三个游戏：
 
-模板使用 **无认证路由**（`router.getNoAuth` / `router.postNoAuth`），适用于插件自带的 WebUI 页面调用。
+| 游戏 | 区服组合 | 通货 |
+|------|----------|------|
+| 流放之路2 | 国服 / 赛季 / 普通、国际服 / 赛季 / 普通 | 神圣石 |
+| 流放之路1 | 国服 / 赛季 / 普通、国际服 / 赛季 / 普通 | 神圣石 |
+| 火炬之光 | 赛季 / 普通、赛季 / 专家 | 初火源质 |
 
-> NapCat 路由器提供两种注册方式：
-> - `router.get` / `router.post`：需要 NapCat WebUI 登录认证
-> - `router.getNoAuth` / `router.postNoAuth`：无需认证，插件 WebUI 页面可直接调用
+> ⚠️ **各游戏的 `currencyList` 彼此不通用**。同名通货跨游戏是独立数据，
+> 站点上各专区提供的通货本就不同——把流放之路2 的清单照抄给流放之路1，
+> 表现是**静默产出 0**（名称匹配不上，不报错）。
 
-### 内置 API 接口
+## 数据文件
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/info` | 获取插件信息 |
-| GET | `/status` | 获取运行状态、配置、统计 |
-| GET | `/config` | 获取当前配置 |
-| POST | `/config` | 保存配置（合并更新） |
-| GET | `/groups` | 获取群列表（含启用状态） |
-| POST | `/groups/:id/config` | 更新单个群配置 |
-| POST | `/groups/bulk-config` | 批量更新群配置 |
+全部落在 NapCat 的插件数据目录（`ctx.dataPath`）下：
 
-### 前端调用方式
-
-```javascript
-// 无认证 API 请求
-const url = `/api/plugin/${PLUGIN_NAME}${path}`;
-const res = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
-    ...options
-});
+```
+data.json                      # 各游戏最新价格（含游戏级 readAt 与配置指纹）
+state.json                     # 会话订阅关系：谁开了通知、订了哪些游戏
+archive/
+├── 2026-09-18.json            # 当天：按 run 实时追加
+└── 2026-09-17.json.gz         # 次日起：gzip 压缩，30 天后删除
 ```
 
-## 📝 编码约定
+- `data.json` —— "各游戏现在值多少" + 最近一次抓取尝试的失败原因。**失败不覆盖**已成功的数据。
+- `state.json` —— 纯订阅关系表，不含任何时间戳。
+- `archive/` —— `data.json` 的历史切片，结构与 `data.json` 的 `games` 同构。
+  维护任务挂在 `plugin_init` 与每次成功抓取之后，**不依赖调度器**——
+  插件被停用或 `pushHours` 为空时归档照样压缩清理。
 
-### ESM 模块规范
+## 浏览器
 
-- `package.json` 中 `type: "module"`
-- 构建目标 `ESNext`，输出 `.mjs`
+抓取依赖一个 Chromium 内核浏览器。检测顺序：
 
-### 状态访问模式
+1. 配置项 `chromeExecutablePath`（用户显式指定的排最前）
+2. **共享安装路径**：`%LOCALAPPDATA%\napcat-chrome\`（Windows）/ `$XDG_DATA_HOME/napcat-chrome/`（Linux，缺省 `~/.local/share`）
+3. 系统浏览器常见路径（Linux 的 `google-chrome` / `chromium` 等，Windows 的 Chrome / Edge）
 
-```typescript
-import { pluginState } from '../core/state';
+三条都没命中时，在插件 WebUI 点「安装浏览器」，会从官方源（失败则回退 npmmirror 镜像）
+下载 Chrome for Testing 到共享安装路径——该路径**不含插件名**，装的浏览器其它 NapCat 插件也能用。
 
-// 读取配置
-const config = pluginState.config;
+> Chrome 下载与完整检测（会真的起一个浏览器进程）都**只由 WebUI 显式触发**；
+> 指令里的 `status` 只读缓存，不会拉起浏览器。
 
-// 记录日志（三级别）
-pluginState.log('info', '消息内容');
-pluginState.log('warn', '警告内容');
-pluginState.log('error', '错误内容', error);
-pluginState.logDebug('调试信息'); // 仅 debug 模式输出
+## 开发
 
-// 配置操作
-pluginState.setConfig(ctx, { key: value });       // 合并更新
-pluginState.replaceConfig(ctx, fullConfig);        // 完整替换
-pluginState.updateGroupConfig(ctx, groupId, cfg);  // 更新群配置
-pluginState.isGroupEnabled(groupId);               // 检查群启用状态
-
-// 调用 OneBot API
-await pluginState.callApi('send_group_msg', { group_id, message });
-
-// 统计
-pluginState.incrementProcessedCount();
+```bash
+pnpm install
+pnpm build              # 构建 WebUI + 插件后端
+pnpm dev:webui          # WebUI 开发服务器（纯前端开发用）
+pnpm watch              # 监听插件后端，重新构建即自动部署 + 热重载
+pnpm typecheck          # 类型检查
+pnpm help:generate      # 重新生成帮助文本（改动指令后必跑）
+pnpm --filter napcat-plugin-currency-price test    # 单元测试
 ```
 
-### 消息发送模式
+热重载依赖 `napcat-plugin-debug` 插件，连接地址读根目录 `.env`：
 
-```typescript
-import {
-    sendGroupMessage, sendPrivateMessage, sendGroupForwardMsg,
-    setMsgEmojiLike, uploadGroupFile,
-    textSegment, imageSegment, atSegment, replySegment, buildForwardNode
-} from '../handlers/message-handler';
-
-// 发送群消息（带回复）
-await sendGroupMessage(ctx, groupId, [
-    replySegment(messageId),
-    textSegment('消息内容')
-]);
-
-// 合并转发消息
-const nodes = [
-    buildForwardNode('10001', 'Bot', [textSegment('第一条')]),
-    buildForwardNode('10001', 'Bot', [textSegment('第二条')]),
-];
-await sendGroupForwardMsg(ctx, groupId, nodes);
-
-// 表情回复
-await setMsgEmojiLike(ctx, messageId, '76');
-
-// 上传群文件
-await uploadGroupFile(ctx, groupId, '/path/to/file.zip', 'file.zip');
+```env
+WS_URL=ws://192.168.1.100:8998
+TOKEN=your-token
 ```
 
-### API 响应格式
+> **改指令前缀或指令表之后必须重跑 `pnpm help:generate`**：前缀被烧进帮助文本与帮助图片，
+> 不重跑就会出现"帮助里写的指令敲不出来"。前缀本身只能由开发者改
+> `packages/plugin/src/config.ts` 的 `DEFAULT_CONFIG.commandPrefix`，清洗层刻意忽略外部输入。
 
-```typescript
-// 成功响应
-res.json({ code: 0, data: { ... } });
+> `pnpm watch` 只监听插件后端。改完 WebUI 需先 `pnpm --filter @napcat-plugin-template/webui build`。
+> 验证以 **vite build** 为准，`typecheck` 可能报 napcat-types 包自身的语法错误，与本项目代码无关。
 
-// 错误响应
-res.status(500).json({ code: -1, message: '错误描述' });
+### 项目结构
+
+```
+packages/
+├── plugin/                     # 插件后端（发布物）
+│   ├── src/
+│   │   ├── index.ts            # 生命周期入口
+│   │   ├── config.ts           # 默认配置、内置游戏清单、配置 Schema
+│   │   ├── core/               # 全局状态单例 / 角色推导 / 会话键
+│   │   ├── handlers/           # 消息处理：指令注册表与分发、各指令 handler
+│   │   ├── services/           # 抓取、渲染、调度、推送、归档维护、浏览器
+│   │   ├── store/              # data.json / state.json / archive 读写
+│   │   └── utils/
+│   ├── scripts/generateHelp/   # 帮助文本生成（权威源 → helpText.generated.ts）
+│   └── tests/                  # vitest
+├── webui/                      # React SPA（仪表盘 / 分区配置 / 群管理 / 配置）
+└── shared/                     # 前后端共享类型（单一事实来源）
 ```
 
-## 🤖 AI 辅助开发
+### 参考文档
 
-项目内置了 NapCat API 的 Apifox MCP Server 配置（`.vscode/mcp.json`），在 VS Code 中配合 AI 助手（如 GitHub Copilot）使用时，可以直接查询 NapCat 的完整 API 文档。
+| 文档 | 内容 |
+|------|------|
+| [CONTEXT.md](CONTEXT.md) | 领域术语的唯一权威（游戏 / 区服 / 通货 / 数据新鲜度 / 配置指纹……） |
+| [docs/design.md](docs/design.md) | 设计意图的长期权威 |
+| [docs/index.md](docs/index.md) | 开发范式体系入口 |
+| [docs/adr/](docs/adr/) | 架构决策记录 |
 
-### 使用方式
+## CI/CD
 
-1. 使用 VS Code 打开本项目
-2. 确保已安装 [GitHub Copilot](https://marketplace.visualstudio.com/items?itemName=GitHub.copilot) 扩展
-3. 打开 Copilot Chat，MCP Server 会自动启动
-4. 在对话中即可让 AI 查询 NapCat API 接口信息，例如：
-   - *"NapCat 有哪些发送消息的 API？"*
-   - *"获取群列表的接口参数是什么？"*
-   - *"帮我调用 send_group_msg 发送一条群消息"*
-
-> MCP 配置位于 `.vscode/mcp.json`，使用 `apifox-mcp-server` 连接 NapCat 的 API 文档站点，无需额外配置。
-
-## 🚀 CI/CD 自动发布
-
-项目内置了两个 GitHub Actions 工作流：
-
-### 1. 自动构建发布（`release.yml`）
-
-推送 `v*` 格式的 tag 即可自动构建并创建 GitHub Release。
+推送 `v*` 格式的 tag 会自动构建并创建 Release：
 
 ```bash
 git tag v1.0.0
@@ -336,92 +217,11 @@ git push origin v1.0.0
 
 也可在 GitHub Actions 页面手动触发，可选填版本号。
 
-**基础自定义：**
-- 修改 `release.yml` 中的 `PLUGIN_NAME` 为你的插件名称
-- 默认 Release Note 模板位于 `.github/prompt/default.md`
+Release Note 支持由 AI 按 `.github/prompt/release_note_prompt.txt` 从 commit 记录生成：
+配置仓库 Secrets 里的 `AI_API_URL` / `AI_API_KEY`（可选 `AI_MODEL`，默认 `gpt-4o-mini`，
+需为兼容 OpenAI 格式的接口）即启用；未配置或调用失败时自动回退到
+`.github/prompt/default.md` 模板，不会阻断发布。
 
-#### 🤖 AI 生成 Release Note（可选）
-
-支持接入任意兼容 OpenAI 格式的 AI API，自动根据 git commit 记录生成结构化的 Release Note。
-
-**配置方式：** 在插件仓库 **Settings > Secrets and variables > Actions** 中添加以下 Secrets：
-
-| Secret | 必填 | 说明 |
-|--------|------|------|
-| `AI_API_URL` | ✅ | 兼容 OpenAI 格式的 API 地址（如 `https://api.openai.com/v1/chat/completions`） |
-| `AI_API_KEY` | ✅ | 对应的 API 密钥 |
-| `AI_MODEL` | ❌ | 模型名称，默认 `gpt-4o-mini` |
-
-**工作逻辑：**
-- ✅ 配置了 `AI_API_URL` + `AI_API_KEY` → 自动调用 AI 生成 Release Note
-- ❌ 未配置或 AI 调用失败 → 自动回退到默认模板（`.github/prompt/default.md`）或 commit log
-- AI 调用失败不会阻断发布流程，始终保证 Release 正常创建
-
-**自定义 AI Prompt：** 创建 `.github/prompt/ai-release-note.md` 文件即可覆盖默认的 system prompt，支持 `{VERSION}` 占位符。
-
-> 💡 不配置任何 AI 相关的 Secret，发布流程与之前完全一致，无任何影响。
-
-### 2. 自动更新插件索引（`update-index.yml`）
-
-Release 发布后，会自动向 [napcat-plugin-index](https://github.com/NapNeko/napcat-plugin-index) 提交 PR 更新插件索引，**无需手动编辑 `plugins.v4.json`**。
-
-**完整流程：**
-
-```
-push tag → release.yml 构建发布 → update-index.yml 自动提交 PR → 索引仓库 CI 自动审核 → 维护者合并
-```
-
-**配置步骤：**
-
-1. **填写 `package.json` 中的插件元信息**（CI 会自动读取）：
-   ```json
-   {
-     "name": "napcat-plugin-your-name",
-     "plugin": "你的插件显示名",
-     "version": "1.0.0",
-     "description": "插件描述",
-     "author": "你的名字",
-     "napcat": {
-       "tags": ["工具"],
-       "minVersion": "4.14.0",
-       "homepage": "https://github.com/username/napcat-plugin-your-name"
-     }
-   }
-   ```
-
-   `napcat` 字段说明：
-
-   | 字段 | 说明 | 默认值 |
-   |------|------|--------|
-   | `tags` | 插件标签数组，用于分类 | `["工具"]` |
-   | `minVersion` | 支持的最低 NapCat 版本 | `"4.14.0"` |
-   | `homepage` | 插件主页 URL | 仓库地址 |
-
-2. **配置仓库 Secret**：在插件仓库 Settings > Secrets and variables > Actions 中添加：
-   - `INDEX_PAT`：一个有 `public_repo` 权限的 GitHub Personal Access Token，用于向索引仓库提交 PR
-
-3. **修改 `update-index.yml`**（可选）：如果索引仓库不是 `NapNeko/napcat-plugin-index`，修改 `INDEX_REPO` 环境变量
-
-> 💡 配置完成后，每次发布新版本只需 `git tag v1.x.x && git push origin v1.x.x`，一切自动完成！
-
-## 📦 部署
-
-### 方式一：一键部署（推荐开发时使用）
-
-确保 NapCat 端已安装并启用 `napcat-plugin-debug` 插件，然后：
-
-```bash
-pnpm run deploy
-```
-
-这会自动构建，`napcatHmrPlugin` 在构建完成后自动复制 `dist/` 到远程插件目录并触发热重载。
-
-### 方式二：手动部署
-
-将 `dist/` 目录的内容复制到 NapCat 的插件目录即可。
-
-> 💡 使用 CI/CD 自动发布后，可直接从 GitHub Release 下载 zip 包解压到 `plugins` 目录。
-
-## 📄 许可证
+## 许可证
 
 MIT License
