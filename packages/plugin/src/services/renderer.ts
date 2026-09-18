@@ -15,6 +15,17 @@ function zoneTitle(zone: string[]): string {
     return `【${zone.join(' / ')}】`;
 }
 
+/** `renderGame` 的调用方上下文。**不是数据的一部分**——同一份数据两种处境下长得不同 */
+export interface RenderOptions {
+    /**
+     * 本轮抓取失败、渲染的是 `data.json` 里的**旧值**。
+     *
+     * ⚠️ 与「因新鲜而跳过」**不是一回事**（§10.2）: 后者渲染的数据是 5 分钟内的新数据,
+     * 加标记反而误导。只有调用方知道本轮到底抓没抓到, 所以由调用方传入。
+     */
+    notUpdated?: boolean;
+}
+
 /**
  * 渲染一个游戏的价格块。
  *
@@ -26,8 +37,13 @@ function zoneTitle(zone: string[]): string {
  * - `missing`（配置的通货名在站点上不存在）**单独成行**: 被过滤掉的行在消息里看不见,
  *   这是配置写错时用户唯一的可见信号。
  */
-export function renderGame(gameName: string, record: GameRecord): string {
-    const lines = [`「${gameName}」${formatLocalTime(record.readAt)} 实时千岛通货价格`];
+export function renderGame(
+    gameName: string,
+    record: GameRecord,
+    options: RenderOptions = {},
+): string {
+    const marker = options.notUpdated ? '（数据未更新）' : '';
+    const lines = [`「${gameName}」${formatLocalTime(record.readAt)} 实时千岛通货价格${marker}`];
 
     for (const zone of record.zones) {
         lines.push('', zoneTitle(zone.zone));

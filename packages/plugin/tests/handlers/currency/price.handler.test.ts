@@ -16,8 +16,10 @@ import { DEFAULT_CONFIG } from '../../../src/config';
 import { pluginState } from '../../../src/core/state';
 import { handleMessage } from '../../../src/handlers/message-handler';
 import { priceHandlerDeps } from '../../../src/handlers/currency/price.handler';
+import { pushToSubscribers } from '../../../src/services/notifier';
 import { detectBrowserLightweight, invalidateBrowserStatus } from '../../../src/services/browser/status';
 import type { DetectOptions } from '../../../src/services/browser/launcher';
+import { SessionStore } from '../../../src/store/session.store';
 import { createTestEnv, groupMessage, type TestEnv } from '../../helpers/test-env';
 
 let env: TestEnv;
@@ -208,5 +210,31 @@ describe('price — 抓取与展示', () => {
         expect(reply).not.toContain('崇高石');
         expect(reply).not.toContain('卡兰德的魔镜');
         expect(reply).toContain('2 项未取到价格');
+    });
+
+    it('抓取失败、回退旧数据时展示带「（数据未更新）」——展示不该假装数据是新的（§12.3）', async () => {
+        await subscribeAndStub('流放之路2', okResult());
+        await send(groupMessage('#currency price'));
+
+        // 第二轮: 数据已过期会重抓, 而这次抓失败了
+        priceHandlerDeps.scrape = async () => ({ 流放之路2: { error: '页面打不开' } });
+        const reply = await send(groupMessage('#currency price'));
+
+        expect(reply).toContain('（数据未更新）');
+        // 推的是上一次成功留下的旧值
+        expect(reply).toContain('神圣石 0.2444 元/个');
+    });
+
+    it('与定时推送**走同一渲染器**——同一份数据、两条路径, 逐字相同', async () => {
+        await subscribeAndStub('流放之路2', okResult());
+        const fromPrice = await send(groupMessage('#currency price'));
+
+        // 同一会话、同一份 `data.json`, 换推送路径渲染
+        SessionStore.getInstance().setNotifyEnabled('group:555', true);
+        env.clearSent();
+        await pushToSubscribers();
+
+        expect(env.sent).toHaveLength(1);
+        expect(env.sent[0]).toBe(fromPrice);
     });
 });

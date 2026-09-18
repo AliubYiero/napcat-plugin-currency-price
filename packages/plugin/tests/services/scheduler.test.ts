@@ -15,6 +15,7 @@ import { DataStore } from '../../src/store/data.store';
 import { detectBrowserLightweight, invalidateBrowserStatus } from '../../src/services/browser/status';
 import type { DetectOptions } from '../../src/services/browser/launcher';
 import type { CatalogConfig } from '../../src/types';
+import { formatLocalTime } from '../../src/utils/time';
 import { createTestEnv, type TestEnv } from '../helpers/test-env';
 
 let env: TestEnv;
@@ -70,6 +71,8 @@ beforeEach(() => {
         ...DEFAULT_CONFIG,
         enabled: true,
         pushHours: [9, 21],
+        // 推送间隔在片 09 的 notifier 测试里单独验; 这里置 0, 免得用例被假时钟卡住
+        pushIntervalMs: 0,
         catalogs: ['流放之路2', '火炬之光'].map((name) => ({
             name,
             pageUrl: `https://qiandao.com/${name}`,
@@ -90,6 +93,12 @@ afterEach(() => {
 function subscribe(gameName: string): void {
     // test-env 默认群是 555, 会话键 `group:555`
     SessionStore.getInstance().addGame('group:555', gameName);
+}
+
+/** 订阅 + 开通知（推送只发给开了通知的会话） */
+function subscribeWithNotify(gameName: string): void {
+    SessionStore.getInstance().setNotifyEnabled('group:555', true);
+    subscribe(gameName);
 }
 
 /** 一份成功结果; `readAt` 由调用方决定新旧 */
@@ -223,6 +232,41 @@ describe('schedulerTick — 触发后的动作序列', () => {
         await schedulerTick({ now: fixedNow, scrape: stub.scrape });
 
         expect(stub.calls).toHaveLength(0);
+    });
+
+    it('**全部游戏都新鲜时也推送**——「定期送达」不因为数据刚更新过就缺席（§10.1）', async () => {
+        subscribeWithNotify('流放之路2');
+
+        // 1 分钟前抓过 → 新鲜, 本轮一个都不抓
+        DataStore.getInstance().saveGameResult(
+            '流放之路2',
+            okResult(new Date(fixedNow() - 60_000).toISOString()),
+        );
+
+        const stub = stubScrape();
+        await schedulerTick({ now: fixedNow, scrape: stub.scrape });
+
+        expect(stub.calls).toHaveLength(0);
+        expect(env.sent).toHaveLength(1);
+        expect(env.sent[0]).toContain('「流放之路2」');
+        // 因新鲜而跳过 → **不加**标记
+        expect(env.sent[0]).not.toContain('（数据未更新）');
+    });
+
+    it('本轮**抓取失败**的游戏照推旧值, 头部带「（数据未更新）」', async () => {
+        subscribeWithNotify('流放之路2');
+
+        // 30 分钟前的旧数据 → 过期 → 本轮会真的抓, 且这个抓是失败的
+        const oldReadAt = new Date(fixedNow() - 30 * 60_000).toISOString();
+        DataStore.getInstance().saveGameResult('流放之路2', okResult(oldReadAt));
+
+        const stub = stubScrape({ 流放之路2: { error: '页面打不开' } });
+        await schedulerTick({ now: fixedNow, scrape: stub.scrape });
+
+        expect(env.sent).toHaveLength(1);
+        expect(env.sent[0]).toContain('（数据未更新）');
+        // 推的是旧值: 时间戳仍是 30 分钟前那一次
+        expect(env.sent[0]).toContain(`「流放之路2」${formatLocalTime(oldReadAt)}`);
     });
 
     it('**抓取跨过整点时, 下一次触发基于完成时刻重算**——不产生自我重叠', async () => {

@@ -1,6 +1,6 @@
 # 09 — 通知层（模板 / 串行 / 旧值标记）
 
-Status: ready-for-agent
+Status: ready-for-human
 Type: AFK
 Blocked by: 08, 02
 来源: [docs/design.md](../../../docs/design.md) §10 §12.3
@@ -49,20 +49,35 @@ Blocked by: 08, 02
 
 ## Acceptance criteria
 
-- [ ] 定时推送**包含**因新鲜而跳过的游戏，且这些游戏**不加**「数据未更新」标记
-- [ ] 失败的游戏推 `data.json` 里的旧值，头部带「（数据未更新）」
-- [ ] **从未成功抓到过的游戏不发**
-- [ ] 全部游戏失败且都无旧值 → **完全静默**（不产生任何消息）
-- [ ] 一个游戏一条消息，按该会话 `enabledGames` 的顺序
-- [ ] 串行推送，每条之间间隔 `pushIntervalMs`
-- [ ] 每个会话各自发送，群与私聊各自独立收到
-- [ ] 区服组合标题层数自适应：火炬之光（2 级）与流放之路（3 级）都正确
-- [ ] 头部时间是**游戏级** `readAt` 转本地时区，不是区服级
-- [ ] `price` 为 `0` 与 `null` 的行都被过滤，`（N 项未取到价格）` 计数正确
-- [ ] 整块区服都没取到时**仍显示标题**
-- [ ] `missing` 单独成行，数量正确
-- [ ] 价格原样显示，不做固定小数位
-- [ ] `price` 指令与定时推送走同一渲染器（同一份代码，可通过改一处两边同时生效验证）
+- [x] 定时推送**包含**因新鲜而跳过的游戏，且这些游戏**不加**「数据未更新」标记
+- [x] 失败的游戏推 `data.json` 里的旧值，头部带「（数据未更新）」
+- [x] **从未成功抓到过的游戏不发**
+- [x] 全部游戏失败且都无旧值 → **完全静默**（不产生任何消息）
+- [x] 一个游戏一条消息，按该会话 `enabledGames` 的顺序
+- [x] 串行推送，每条之间间隔 `pushIntervalMs`
+- [x] 每个会话各自发送，群与私聊各自独立收到
+- [x] 区服组合标题层数自适应：火炬之光（2 级）与流放之路（3 级）都正确
+- [x] 头部时间是**游戏级** `readAt` 转本地时区，不是区服级
+- [x] `price` 为 `0` 与 `null` 的行都被过滤，`（N 项未取到价格）` 计数正确
+- [x] 整块区服都没取到时**仍显示标题**
+- [x] `missing` 单独成行，数量正确
+- [x] 价格原样显示，不做固定小数位
+- [x] `price` 指令与定时推送走同一渲染器（同一份代码，可通过改一处两边同时生效验证）
+
+## 落定记录
+
+- `services/notifier.ts`（新）: `pushToSubscribers(failedGames)`, 公开入口只有这一个
+- `services/renderer.ts`: `renderGame` 加 `RenderOptions.notUpdated`（「（数据未更新）」标记）
+- `services/scheduler.ts`: **锁提到最外层**, 推送落在锁内、且每一轮都发生 —— 片 08 的
+  `if (stale.length > 0)` 会让「全部游戏都新鲜」的那一轮整轮缺席推送, 与 §10.1 直接冲突
+- `services/scrape-runner.ts`: 抽出 `failedGamesOf(results)`, 调度器与 `price` 共用
+- `handlers/currency/price.handler.ts`: 展示按 §12.3 带失败标记, 与推送共用 `renderGame`
+- `core/session.ts`: 补 `parseSessionKey`（`sessionKeyOf` 的逆）
+- 测试基建: `test-env` 的发送记录补 **目标与时刻**（`sentMessages`）, 否则「发错人」
+  与「间隔」这两类错在纯文本记录里根本看不出来
+
+**未在本片验证**: 推送在真实 QQ 频控下的表现 —— `pushIntervalMs` 的边界在 QQ 服务端、
+因部署而异, 单测只能证明「间隔按配置发生了」。见片 12。
 
 ## Blocked by
 

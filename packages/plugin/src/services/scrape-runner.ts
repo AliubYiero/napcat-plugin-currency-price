@@ -31,6 +31,20 @@ export interface ScrapeRoundDeps {
 }
 
 /**
+ * 一轮结果里**失败**的游戏名。
+ *
+ * 成败判定只看 `error` 字段的有无——与 `GameResult` 的定义一致, 不另设成功标志。
+ * 推送层用它决定哪些游戏要加「（数据未更新）」（片 09）, 归档用它数成功率。
+ */
+export function failedGamesOf(results: Record<string, GameResult>): Set<string> {
+    return new Set(
+        Object.entries(results)
+            .filter(([, result]) => 'error' in result)
+            .map(([gameName]) => gameName),
+    );
+}
+
+/**
  * 跑一轮抓取并落定:
  *
  * 1. `scrapeGames(这几个游戏)` —— 单个游戏的失败被隔离在它自己身上
@@ -60,7 +74,7 @@ export async function runScrapeRound(
         store.saveGameResult(gameName, result);
     }
 
-    const successCount = Object.values(results).filter((game) => !('error' in game)).length;
+    const successCount = Object.keys(results).length - failedGamesOf(results).size;
 
     if (successCount > 0) {
         const archive = ArchiveStore.getInstance();

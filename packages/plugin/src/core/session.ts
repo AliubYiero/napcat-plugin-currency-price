@@ -20,6 +20,30 @@ export function sessionKeyOf(from: UserRole['from']): string {
     return `${from.type}:${from.id}`;
 }
 
+/** 会话键解析出的发送目标: 群号或 QQ 号 */
+export interface SessionTarget {
+    type: 'group' | 'private';
+    /** 群号或 QQ 号 (字符串形式, 直接喂给发送接口) */
+    id: string;
+}
+
+/**
+ * 会话键 → 发送目标 (`sessionKeyOf` 的逆)
+ *
+ * 键是**用户可手改的磁盘内容**, 格式非法时返回 `null` 而不是抛错: 推送层据此跳过
+ * 这一个会话, 不让一个手改坏的键拖垮整轮推送。
+ */
+export function parseSessionKey(sessionKey: string): SessionTarget | null {
+    const separator = sessionKey.indexOf(':');
+    if (separator <= 0) return null;
+
+    const type = sessionKey.slice(0, separator);
+    const id = sessionKey.slice(separator + 1);
+    if ((type !== 'group' && type !== 'private') || id.length === 0) return null;
+
+    return { type, id };
+}
+
 /**
  * 会话在**面向用户的文案**里的自称
  *

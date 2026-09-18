@@ -21,6 +21,11 @@ export interface TestEnv {
     dataPath: string;
     /** 本环境里机器人发出的全部消息文本, 按发送顺序 */
     sent: string[];
+    /**
+     * 同上, 但带上了**发给了谁**。零推送范围类断言（群 / 私聊各自独立、推给了哪个会话）
+     * 必须有目标才看得出, 只看文本会漏掉"发错人"这一类错。
+     */
+    sentMessages: SentMessage[];
     /** 读取数据目录下的文件内容 (返回 null 表示文件不存在) */
     readDataFile(filename: string): string | null;
     /** 初始化 `pluginState` 指向本环境 (模拟一次插件加载) */
@@ -36,6 +41,16 @@ export interface TestEnv {
     callRoute(key: string, req?: unknown): Promise<RouteCall>;
     /** 删除临时目录 */
     dispose(): void;
+}
+
+/** 一条已发出的消息: 内容 + 目标 */
+export interface SentMessage {
+    messageType: string;
+    /** 群号或 QQ 号 (字符串形式, 与发送参数的取值一致) */
+    target: string;
+    message: string;
+    /** 发出时刻。测试用假时钟时可读出虚拟时间, 逐条间隔因此能被直接断言 */
+    sentAt: number;
 }
 
 /** 一次 API 路由调用的结果 */
@@ -58,6 +73,7 @@ export function createTestEnv(root?: string): TestEnv {
     const dataPath = path.join(root, 'data');
     const configPath = path.join(root, 'config.json');
     const sent: string[] = [];
+    const sentMessages: SentMessage[] = [];
 
     const logger = {
         debug: vi.fn(),
@@ -96,7 +112,14 @@ export function createTestEnv(root?: string): TestEnv {
         actions: {
             call: async (action: string, params: Record<string, unknown>) => {
                 if (action === 'send_msg') {
-                    sent.push(String(params.message));
+                    const message = String(params.message);
+                    sent.push(message);
+                    sentMessages.push({
+                        messageType: String(params.message_type),
+                        target: String(params.group_id ?? params.user_id ?? ''),
+                        message,
+                        sentAt: Date.now(),
+                    });
                 }
                 return { user_id: '10000' };
             },
@@ -118,6 +141,7 @@ export function createTestEnv(root?: string): TestEnv {
         root,
         dataPath,
         sent,
+        sentMessages,
         readDataFile(filename) {
             const filePath = path.join(dataPath, filename);
             return fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf-8') : null;
@@ -127,6 +151,7 @@ export function createTestEnv(root?: string): TestEnv {
         },
         clearSent() {
             sent.length = 0;
+            sentMessages.length = 0;
         },
         async callRoute(key, req = {}) {
             const handler = routes.get(key);

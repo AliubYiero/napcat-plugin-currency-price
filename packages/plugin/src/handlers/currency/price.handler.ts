@@ -16,7 +16,7 @@ import type { UserRole } from '../../core/admin';
 import { sessionKeyOf } from '../../core/session';
 import { pluginState } from '../../core/state';
 import { runWithScrapeLock } from '../../services/scrape-lock';
-import { runScrapeRound } from '../../services/scrape-runner';
+import { failedGamesOf, runScrapeRound } from '../../services/scrape-runner';
 import { ensureBrowserStatus } from '../../services/browser/status';
 import { getStaleGames } from '../../services/staleness';
 import { renderGame } from '../../services/renderer';
@@ -80,25 +80,31 @@ export async function priceHandler(
     // 全部新鲜时不起浏览器, 直接展示（§12.2）——"手动刷新"的频率高于数据变化频率
     const stale = getStaleGames(targetNames);
 
+    /** 本轮抓取失败的游戏。展示这些游戏时头部要带「（数据未更新）」（§12.3） */
+    const failed = new Set<string>();
+
     if (stale.length > 0) {
         // 抓取可能要跑几十秒, 先回执一声, 免得用户以为指令没被收到
         await sendReply(ctx, event, SCRAPING_NOTICE);
 
         await runWithScrapeLock(async () => {
             // ⚠️ 轮到自己时**重新计算**过期集合: 排队期间前一个持锁者（定时任务或
-            // 另一个会话）可能已经把这些游戏抓过了, 此时直接复用, 不再起浏览器
+            // 另一个会话）可能已经把这些游戏抓过了, 此时直接复用, 不再起浏览器。
+            // 这条早退路径**不带失败**: 数据是刚被前者抓新的, 不是旧值
             const stillStale = getStaleGames(targetNames);
             if (stillStale.length === 0) return;
 
-            await runScrapeRound(
+            const { results } = await runScrapeRound(
                 targets.filter((catalog) => stillStale.includes(catalog.name)),
                 `manual:${sessionKey}`,
                 { scrape: priceHandlerDeps.scrape },
             );
+
+            for (const gameName of failedGamesOf(results)) failed.add(gameName);
         });
     }
 
-    await sendReply(ctx, event, renderSessionGames(session.enabledGames, DataStore.getInstance()));
+    await sendReply(ctx, event, renderSessionGames(session.enabledGames, failed));
 }
 
 /** 本会话没有可抓的游戏时的提示（还没订阅, 或订阅的游戏已从配置里删掉） */
@@ -109,13 +115,23 @@ export const NO_GAME_TO_SCRAPE = '本会话没有可抓取的游戏，用 game �
  *
  * 顺序取自 `enabledGames` 而不是 `catalogs`: 用户按什么顺序订的, 就按什么顺序看。
  * 没有数据的游戏（从未成功抓到过）直接跳过——展示一个空壳只会让人以为抓到了。
+ *
+ * ⚠️ 渲染一律走 `services/renderer` 的 `renderGame`（§12.3）——定时推送用的是同一个
+ * 函数。两处各写一份模板, 迟早会在改文案时漏掉一处, 表现是同一条数据在两个场景里
+ * 长得不一样。
  */
-function renderSessionGames(enabledGames: string[], store: DataStore): string {
+function renderSessionGames(
+    enabledGames: string[],
+    failedGames: ReadonlySet<string>,
+): string {
+    const store = DataStore.getInstance();
     const blocks: string[] = [];
 
     for (const gameName of enabledGames) {
         const record = store.getGame(gameName);
-        if (record) blocks.push(renderGame(gameName, record));
+        if (record) {
+            blocks.push(renderGame(gameName, record, { notUpdated: failedGames.has(gameName) }));
+        }
     }
 
     return blocks.join('\n\n');

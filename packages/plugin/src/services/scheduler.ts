@@ -18,8 +18,9 @@
 import { pluginState } from '../core/state';
 import { SessionStore } from '../store/session.store';
 import { ensureBrowserStatus } from './browser/status';
+import { pushToSubscribers } from './notifier';
 import { runWithScrapeLock } from './scrape-lock';
-import { runScrapeRound, type ScrapeRoundDeps } from './scrape-runner';
+import { failedGamesOf, runScrapeRound, type ScrapeRoundDeps } from './scrape-runner';
 import { getStaleGames } from './staleness';
 import { nextSelectedHour } from '../utils/time';
 
@@ -104,9 +105,9 @@ export function rearmScheduler(deps: SchedulerDeps = {}): void {
 /**
  * 到点触发的一轮抓取。也供测试直接调用（等价于把定时器拨到触发时刻）。
  *
- * 触发后的动作序列（§12.1, 推送除外）:
- * 停摆检查 → 算并集 → 逐个游戏判断新鲜度 → 抢全局锁 → 抓过期的 → 落盘 → 归档 + 维护
- * → 释放锁 → **基于完成时刻**计算下一个选中整点 → 重挂定时器
+ * 触发后的动作序列（§12.1）:
+ * 停摆检查 → 算并集 → 抢全局锁 → 轮到自己时重算过期集合 → 抓过期的 → 落盘 → 归档 + 维护
+ * → **推送**（无论本轮抓没抓）→ 释放锁 → 基于完成时刻计算下一个选中整点 → 重挂定时器
  */
 export async function schedulerTick(deps: SchedulerDeps = {}): Promise<void> {
     try {
@@ -128,24 +129,29 @@ export async function schedulerTick(deps: SchedulerDeps = {}): Promise<void> {
             (catalog) => union.includes(catalog.name),
         );
 
-        const stale = getStaleGames(union);
+        // ⚠️ **锁提到最外层**: 推送要落在锁内（§12.1 的"释放锁之前"——推送期间不该有
+        // 另一个抓取插进来）, 而推送**每一轮都要发生**。若像片 08 那样把锁包在
+        // `if (stale.length > 0)` 里, "全部游戏都新鲜"的那一轮就整轮缺席推送——
+        // 而那种轮次恰恰是最常见的（每小时推一次, 数据只有 5 分钟算新鲜）
+        await runWithScrapeLock(async () => {
+            // 后到者轮到自己时重算: 排队期间前一个持锁者（如手动抓取）可能已经
+            // 把这些游戏抓过了, 此时直接复用, 不再起浏览器
+            const stillStale = getStaleGames(union);
+            let failed = new Set<string>();
 
-        if (stale.length > 0) {
-            await runWithScrapeLock(async () => {
-                // 后到者轮到自己时重算: 排队期间前一个持锁者（如手动抓取）可能已经
-                // 把这些游戏抓过了, 此时直接复用, 不再起浏览器
-                const stillStale = getStaleGames(union);
-                if (stillStale.length === 0) return;
-
-                await runScrapeRound(
+            if (stillStale.length > 0) {
+                const { results } = await runScrapeRound(
                     unionCatalogs.filter((catalog) => stillStale.includes(catalog.name)),
                     'schedule',
                     { scrape: deps.scrape },
                 );
 
-                // 推送环节（片 09）插在这里: 释放锁之前
-            });
-        }
+                failed = failedGamesOf(results);
+            }
+
+            // 推送范围是**该会话订阅的全部游戏**, 与本轮抓了哪些无关（§10.1）
+            await pushToSubscribers(failed);
+        });
     } catch (error) {
         pluginState.logger.error('(╥﹏╥) 定时抓取失败:', error);
     } finally {
