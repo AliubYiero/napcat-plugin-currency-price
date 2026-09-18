@@ -206,9 +206,12 @@ describe('帮助指令 — 图片优先, 文本回退', () => {
         const message = await helpMessage(groupMessage('#currency help', { role: 'admin' }));
 
         expect(message).toBe(HELP_TEXT_MAP.admin);
-        // 图上有的每组指令, 回退文本里也在
-        expect(message).toContain('#currency price');
-        expect(message).toContain('#currency notify on|off');
+        // 图上有的每条指令, 回退文本里也在。**逐条从权威源取, 不手写字面量**——
+        // 手写的那份会在权威源改动后过时（`notify` 就是反例: 它是 `on` / `off` 两条独立
+        // 指令, 写成 `on|off` 的字面量在图上和文本里都不存在, 断言的是个假东西）
+        for (const instruction of authoritativeInstructions('admin')) {
+            expect(message).toContain(instruction);
+        }
     });
 
     it('图片存在但发送失败时同样回退文本', async () => {
