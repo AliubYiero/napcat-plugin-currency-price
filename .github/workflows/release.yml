@@ -51,6 +51,16 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "clean_version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
 
+          # 发布包名取自仓库名，仓库改名/复刻到新项目后无需再改本文件。
+          # GITHUB_REPOSITORY 形如 "owner/repo"，在任何事件类型下都由 Actions 注入。
+          PLUGIN_NAME="${GITHUB_REPOSITORY##*/}"
+          if [ -z "$PLUGIN_NAME" ]; then
+            echo "::error::无法从 GITHUB_REPOSITORY 解析仓库名"
+            exit 1
+          fi
+          echo "plugin_name=$PLUGIN_NAME" >> $GITHUB_OUTPUT
+          echo "发布包名: ${PLUGIN_NAME}.zip"
+
       - name: Update package.json version
         run: |
           cd packages/plugin
@@ -63,7 +73,7 @@ jobs:
         env:
           # 构建产物在 packages/plugin/dist（见 packages/plugin/vite.config.ts 的 outDir）
           DIST_DIR: packages/plugin/dist
-          PLUGIN_NAME: napcat-plugin-currency-price
+          PLUGIN_NAME: ${{ steps.version.outputs.plugin_name }}
         run: |
           # 创建临时目录用于组织文件
           mkdir -p release
@@ -88,7 +98,7 @@ jobs:
 
       - name: Verify zip contents
         env:
-          PLUGIN_NAME: napcat-plugin-currency-price
+          PLUGIN_NAME: ${{ steps.version.outputs.plugin_name }}
         run: |
           unzip -l "${PLUGIN_NAME}.zip"
           # 缺件时的失败必须发生在发布前，而不是用户装完之后
@@ -255,6 +265,6 @@ jobs:
           body_path: CHANGELOG.md
           draft: false
           files: |
-            napcat-plugin-currency-price.zip
+            ${{ steps.version.outputs.plugin_name }}.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
