@@ -81,6 +81,18 @@ export function createTestEnv(root?: string): TestEnv {
         adapterName: 'test-adapter',
         logger,
         pluginManager: { config: {} },
+        // 配置 Schema 工厂。这里只做**身份透传**（返回收到的项）: 路由测试关心的是
+        // "schema 能不能构建出来", 不是 NapCat 各控件的真实行为
+        NapCatConfig: {
+            combine: (...items: unknown[]) => items.flat(),
+            html: (content: string) => ({ type: 'html', content }),
+            plainText: (content: string) => ({ type: 'plainText', content }),
+            text: (key: string) => ({ type: 'text', key }),
+            boolean: (key: string) => ({ type: 'boolean', key }),
+            number: (key: string) => ({ type: 'number', key }),
+            select: (key: string) => ({ type: 'select', key }),
+            multiSelect: (key: string) => ({ type: 'multiSelect', key }),
+        },
         actions: {
             call: async (action: string, params: Record<string, unknown>) => {
                 if (action === 'send_msg') {

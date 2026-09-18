@@ -29,6 +29,7 @@ import { EventType } from 'napcat-types/napcat-onebot/event/index';
 
 import { buildConfigSchema } from './config';
 import { pluginState } from './core/state';
+import { ArchiveStore } from './store/archive.store';
 import { handleMessage } from './handlers/message-handler';
 import { registerApiRoutes } from './services/api-service';
 import { ensureBrowserStatus, invalidateBrowserStatus } from './services/browser/status';
@@ -66,6 +67,12 @@ export const plugin_init: PluginModule['plugin_init'] = async (ctx) => {
         //    完整验证不是一回事: 后者要起一个浏览器, 只该由 WebUI 显式触发。
         //    不在这里补这一次的话, 指令与仪表盘会一直显示"未检测", 直到有人点一次「重新检测」。
         ensureBrowserStatus();
+
+        // 6. 归档维护跑一次（压缩昨天 / 清理 30 天）。
+        //    ⚠️ 挂在 init 而不是调度器上（设计文档 §7.4）: 并集为空或小时集合为空时调度器
+        //    根本不启动, 挂在那里的维护会让归档永远不被压缩清理。维护的存在不取决于
+        //    "有没有人订阅"。之后每次成功抓取也会顺带跑一次（由抓取调用方接线, 片 08）。
+        await ArchiveStore.getInstance().runMaintenance();
 
         ctx.logger.info('插件初始化完成');
     } catch (error) {
