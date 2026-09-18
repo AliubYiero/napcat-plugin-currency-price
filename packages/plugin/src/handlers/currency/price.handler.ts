@@ -1,10 +1,13 @@
 /**
  * `price` 指令 —— 手动刷新 + 展示
  *
- * 见设计文档 §12.2（手动刷新）与 §12.3（展示）。本片落定"抓取 → 落盘 → 展示"这条链路;
- * 新鲜度（只重抓过期的）与互斥锁在片 05, 归档在片 07。
+ * 见设计文档 §12.2（手动刷新）与 §12.3（展示）。
  *
- * ⚠️ 本片会抓**全部**订阅游戏, 而不是"只抓过期的"——这是范围边界, 不是实现简化。
+ * 抓取范围是**本会话订阅里过期的**（片 05）: 全部新鲜时不起浏览器, 直接展示。
+ * 抓取前先回执「正在抓取…」, 再抢全局锁（占用则排队）; **轮到自己时重新计算**
+ * 过期集合——排队期间别人可能已经抓过了, 此时直接复用。
+ *
+ * 归档（`trigger: "manual:{会话键}"`）由共享的 `runScrapeRound` 落定（片 07/08）。
  */
 
 import type { OB11Message } from 'napcat-types/napcat-onebot';
@@ -12,7 +15,10 @@ import type { NapCatPluginContext } from 'napcat-types/napcat-onebot/network/plu
 import type { UserRole } from '../../core/admin';
 import { sessionKeyOf } from '../../core/session';
 import { pluginState } from '../../core/state';
+import { runWithScrapeLock } from '../../services/scrape-lock';
+import { runScrapeRound } from '../../services/scrape-runner';
 import { ensureBrowserStatus } from '../../services/browser/status';
+import { getStaleGames } from '../../services/staleness';
 import { renderGame } from '../../services/renderer';
 import { scrapeGames } from '../../services/scraper';
 import { DataStore } from '../../store/data.store';
@@ -58,10 +64,10 @@ export async function priceHandler(
     }
 
     const sessionKey = sessionKeyOf(userRole.from);
-    const { enabledGames } = SessionStore.getInstance().getSession(sessionKey);
+    const session = SessionStore.getInstance().getSession(sessionKey);
 
     // 订阅的游戏可能已经被从配置里删掉了, 这类名字抓不了也不该抓
-    const targets = catalogs.filter((catalog) => enabledGames.includes(catalog.name));
+    const targets = catalogs.filter((catalog) => session.enabledGames.includes(catalog.name));
 
     if (targets.length === 0) {
         await sendReply(ctx, event, NO_GAME_TO_SCRAPE);
@@ -69,19 +75,30 @@ export async function priceHandler(
         return;
     }
 
-    // 抓取可能要跑几十秒, 先回执一声, 免得用户以为指令没被收到
-    await sendReply(ctx, event, SCRAPING_NOTICE);
+    const targetNames = targets.map((catalog) => catalog.name);
 
-    const results = await priceHandlerDeps.scrape(targets, {
-        executablePath: ensureBrowserStatus().path ?? '',
-    });
+    // 全部新鲜时不起浏览器, 直接展示（§12.2）——"手动刷新"的频率高于数据变化频率
+    const stale = getStaleGames(targetNames);
 
-    const store = DataStore.getInstance();
-    for (const [gameName, result] of Object.entries(results)) {
-        store.saveGameResult(gameName, result);
+    if (stale.length > 0) {
+        // 抓取可能要跑几十秒, 先回执一声, 免得用户以为指令没被收到
+        await sendReply(ctx, event, SCRAPING_NOTICE);
+
+        await runWithScrapeLock(async () => {
+            // ⚠️ 轮到自己时**重新计算**过期集合: 排队期间前一个持锁者（定时任务或
+            // 另一个会话）可能已经把这些游戏抓过了, 此时直接复用, 不再起浏览器
+            const stillStale = getStaleGames(targetNames);
+            if (stillStale.length === 0) return;
+
+            await runScrapeRound(
+                targets.filter((catalog) => stillStale.includes(catalog.name)),
+                `manual:${sessionKey}`,
+                { scrape: priceHandlerDeps.scrape },
+            );
+        });
     }
 
-    await sendReply(ctx, event, renderSessionGames(enabledGames, store));
+    await sendReply(ctx, event, renderSessionGames(session.enabledGames, DataStore.getInstance()));
 }
 
 /** 本会话没有可抓的游戏时的提示（还没订阅, 或订阅的游戏已从配置里删掉） */

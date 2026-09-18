@@ -32,7 +32,9 @@ import { pluginState } from './core/state';
 import { ArchiveStore } from './store/archive.store';
 import { handleMessage } from './handlers/message-handler';
 import { registerApiRoutes } from './services/api-service';
+import { closeActiveBrowser } from './services/browser/active';
 import { ensureBrowserStatus, invalidateBrowserStatus } from './services/browser/status';
+import { rearmScheduler, stopScheduler } from './services/scheduler';
 import type { PluginConfig } from './types';
 
 // ==================== 配置 UI Schema ====================
@@ -74,6 +76,10 @@ export const plugin_init: PluginModule['plugin_init'] = async (ctx) => {
         //    "有没有人订阅"。之后每次成功抓取也会顺带跑一次（由抓取调用方接线, 片 08）。
         await ArchiveStore.getInstance().runMaintenance();
 
+        // 7. 挂定时抓取调度器。停摆（pushHours 为空 / 订阅并集为空）或浏览器不可用时
+        //    内部自会不挂——这里无条件问一声, 判定收口在调度器自己的停摆检查里
+        rearmScheduler();
+
         ctx.logger.info('插件初始化完成');
     } catch (error) {
         ctx.logger.error('插件初始化失败:', error);
@@ -110,7 +116,12 @@ export const plugin_onevent: PluginModule['plugin_onevent'] = async (ctx, event)
  */
 export const plugin_cleanup: PluginModule['plugin_cleanup'] = async (ctx) => {
     try {
-        // TODO: 在这里清理你的资源（定时器、WebSocket 连接等）
+        // 先停调度器: 定时器登记在 pluginState.timers 里, state.cleanup() 会顺带清掉,
+        // 但显式停一次把"即将卸载"这个意图说清楚
+        stopScheduler();
+        // ⚠️ 抓取可能正在进行: **强制关闭浏览器且不等待**（§14）——等待一次最坏 3 分钟
+        // 的失败路径, 卸载就卡死了
+        closeActiveBrowser();
         pluginState.cleanup();
         // 浏览器状态是模块级缓存, 热重载后不该把上一次的检测结果带进新实例
         invalidateBrowserStatus();
@@ -130,6 +141,9 @@ export const plugin_get_config: PluginModule['plugin_get_config'] = async (ctx) 
 /** 设置配置（完整替换，由 NapCat WebUI 调用） */
 export const plugin_set_config: PluginModule['plugin_set_config'] = async (ctx, config) => {
     pluginState.replaceConfig(config as PluginConfig);
+    // 调度器按配置触发, 配置写回后一律重挂一次: 重挂本身先取消再判定停摆, 对
+    // 未涉及 pushHours / catalogs / enabled 的变更结果是等价的——代价只是一次空算
+    rearmScheduler();
     ctx.logger.info('配置已通过 WebUI 更新');
 };
 
@@ -146,6 +160,8 @@ export const plugin_on_config_change: PluginModule['plugin_on_config_change'] = 
 ) => {
     try {
         pluginState.replaceConfig({ ...pluginState.config, [key]: value } as PluginConfig);
+        // pushHours / catalogs / enabled 变化后无需重启即生效（§9.1）
+        rearmScheduler();
         ctx.logger.debug(`配置项 ${key} 已更新`);
     } catch (err) {
         ctx.logger.error(`更新配置项 ${key} 失败:`, err);

@@ -17,6 +17,7 @@
 import type { GameOk, ZoneRecord } from '../../store/data.store';
 import type { CatalogConfig } from '../../types';
 import { buildUserAgent, launchBrowser } from '../browser/launcher';
+import { clearActiveBrowser, setActiveBrowser } from '../browser/active';
 import { createCatalogPage } from './page';
 import { parseCurrencyRow, type RawCurrencyRow } from './parse';
 
@@ -145,6 +146,9 @@ export async function scrapeGames(
 async function defaultOpenPage(executablePath: string): Promise<PageSession> {
     const browser = await launchBrowser(executablePath);
 
+    // 登记到全局: 插件卸载（plugin_cleanup）时要**强制关闭**进行中的抓取, 不等待
+    setActiveBrowser(browser);
+
     const context = await browser.newContext({
         userAgent: buildUserAgent(browser.version()),
         locale: 'zh-CN',
@@ -154,6 +158,7 @@ async function defaultOpenPage(executablePath: string): Promise<PageSession> {
     return {
         page: createCatalogPage(await context.newPage()),
         close: async (): Promise<void> => {
+            clearActiveBrowser();
             await browser.close();
         },
     };

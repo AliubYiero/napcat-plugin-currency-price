@@ -22,6 +22,7 @@ import type {
 import { pluginState } from '../core/state';
 import { getInstallState, runInstall } from './browser/chrome-installer';
 import { detectBrowserFull, getBrowserStatus } from './browser/status';
+import { rearmScheduler } from './scheduler';
 import { DataStore } from '../store/data.store';
 
 /**
@@ -124,6 +125,8 @@ export function registerApiRoutes(ctx: NapCatPluginContext): void {
                 ...pluginState.config,
                 ...body,
             } as import('../types').PluginConfig);
+            // pushHours / catalogs / enabled 变化后调度器无需重启即按新配置触发（§9.1）
+            rearmScheduler();
             ctx.logger.info('配置已保存');
             res.json({ code: 0, message: 'ok' });
         } catch (err) {
