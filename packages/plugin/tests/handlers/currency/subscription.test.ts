@@ -167,6 +167,75 @@ describe('game — 列出、订阅与退订', () => {
         expect(readStateFile(env)).toBeNull();
     });
 
+    it('`game add` 可空格分隔多个游戏名: 一条指令订三个', async () => {
+        expect(
+            await send(groupMessage(`#currency game add ${CATALOG_NAMES.join(' ')}`, { role: 'admin' })),
+        ).toBe(`已订阅：${CATALOG_NAMES.join('、')}`);
+
+        expect(await send(groupMessage('#currency game'))).toBe(
+            [
+                '#currency 可订阅的游戏',
+                ...CATALOG_NAMES.map((name) => `- ${name}（已订阅）`),
+            ].join('\n'),
+        );
+    });
+
+    it('**多游戏同一个都不能错**: 混入非法名时整条拒绝, 合法的也不订', async () => {
+        const reply = await send(
+            groupMessage('#currency game add 流放之路1 原神 火炬之光', { role: 'admin' }),
+        );
+
+        expect(reply).toContain('非法参数 原神');
+        // 整条拒绝——不能出现"订上了两个、报了一个"的中间态
+        expect(readStateFile(env)).toBeNull();
+        expect(await send(groupMessage('#currency game'))).not.toContain('已订阅）');
+    });
+
+    it('同一条指令里重复同一个游戏名: 回执去重, 不订出两份', async () => {
+        const reply = await send(
+            groupMessage('#currency game add 火炬之光 火炬之光', { role: 'admin' }),
+        );
+
+        expect(reply).toBe('已订阅：火炬之光');
+        expect(await send(groupMessage('#currency game'))).toContain('- 火炬之光（已订阅）');
+    });
+
+    it('**缺参数**: `game add` 后面什么都没跟时回非法参数, 不是静默成功', async () => {
+        expect(await send(groupMessage('#currency game add', { role: 'admin' }))).toContain(
+            '非法参数',
+        );
+    });
+
+    it('`game remove` 同样可一次退订多个', async () => {
+        await send(groupMessage('#currency game add 流放之路1 流放之路2 火炬之光', { role: 'admin' }));
+
+        expect(
+            await send(groupMessage('#currency game remove 流放之路1 火炬之光', { role: 'admin' })),
+        ).toBe('已取消订阅：流放之路1、火炬之光');
+        expect(await send(groupMessage('#currency game'))).toBe(
+            [
+                '#currency 可订阅的游戏',
+                '- 流放之路2（已订阅）',
+                '- 流放之路1',
+                '- 火炬之光',
+            ].join('\n'),
+        );
+    });
+
+    it('多退订时**分组如实报**: 退掉的与没订过的分两行, 不合并成一句谎话', async () => {
+        await send(groupMessage('#currency game add 流放之路2', { role: 'admin' }));
+
+        expect(
+            await send(groupMessage('#currency game remove 流放之路2 火炬之光', { role: 'admin' })),
+        ).toBe('已取消订阅：流放之路2\n未订阅：火炬之光');
+    });
+
+    it('**缺参数**: `game remove` 后面什么都没跟时回非法参数 (曾经会回"未订阅：undefined")', async () => {
+        expect(await send(groupMessage('#currency game remove', { role: 'admin' }))).toContain(
+            '非法参数',
+        );
+    });
+
     it('**订阅互相独立**: 群里订的不进私聊, 别的群也看不到', async () => {
         await send(groupMessage('#currency game add 流放之路2', { groupId: '555', role: 'admin' }));
         await send(privateMessage('#currency game add 火炬之光', { userId: '789' }));

@@ -458,8 +458,8 @@ type GameFail = { error: string };
 | 二级 `notify` | `#currency notify on` | `admin` | 不限 | 开启本会话通知 |
 | 二级 `notify` | `#currency notify off` | `admin` | 不限 | 关闭本会话通知 |
 | 二级 `game` | `#currency game` | `user` | 不限 | 列出配置中的游戏, 标出本会话已订阅的 |
-| 二级 `game` | `#currency game add <游戏名>` | `admin` | 不限 | 订阅（**游戏名精确匹配**） |
-| 二级 `game` | `#currency game remove <游戏名>` | `admin` | 不限 | 退订（游戏名精确匹配） |
+| 二级 `game` | `#currency game add <游戏名...>` | `admin` | 不限 | 订阅（**游戏名精确匹配**; 可空格分隔多个, **有一个不合法就整条拒绝**） |
+| 二级 `game` | `#currency game remove <游戏名...>` | `admin` | 不限 | 退订（**不校验配置**; 可空格分隔多个, 回执按"退掉的／没订过的"分组） |
 
 **不存在** `reload-chrome` 指令——浏览器重检只通过 WebUI 端点，由仪表盘按钮触发。
 
@@ -708,6 +708,7 @@ plugin_init 完成后 + 每次成功抓取后:
 - [ ] 并集为空 **或** `pushHours` 为空时, 不启动调度器
 - [ ] `#currency notify on|off` 切换本会话通知
 - [ ] `#currency game add 流放之路2` 后本会话订阅该游戏 (精确匹配)
+- [ ] `#currency game add 流放之路1 流放之路2 火炬之光` 一次订三个; 其中混入非法名时**一个都不订**
 - [ ] `#currency status` 显示通知开关、已订阅游戏、各游戏数据时间; **浏览器行只对私聊超管显示**
 - [ ] 三类校验失败各自输出对应文案 (参数不合法 / 未知指令 / 权限不足)
 - [ ] 一个游戏内**任一**区服组合失败 → 整个游戏本轮作废; `data.json` 保持旧数据, 只更新 `lastError`

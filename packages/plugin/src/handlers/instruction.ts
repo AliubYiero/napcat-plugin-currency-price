@@ -14,7 +14,13 @@
 import type { OB11Message } from 'napcat-types/napcat-onebot';
 import type { NapCatPluginContext } from 'napcat-types/napcat-onebot/network/plugin/types';
 import { hasRole, type UserRole } from '../core/admin';
-import { gameAddHandler, gameListHandler, gameRemoveHandler, validateGameName } from './currency/game.handler';
+import {
+    gameAddHandler,
+    gameListHandler,
+    gameRemoveHandler,
+    validateGameNames,
+    validateRemovalTargets,
+} from './currency/game.handler';
 import { helpHandler } from './currency/help.handler';
 import { createNotifySwitchHandler, notifyViewHandler } from './currency/notify.handler';
 import { priceHandler } from './currency/price.handler';
@@ -80,9 +86,13 @@ export const registry: InstructionRegistry = {
             off: { handler: createNotifySwitchHandler(false), requiredRole: 'admin' },
         },
         game: {
-            add: { handler: gameAddHandler, requiredRole: 'admin', validateArgs: validateGameName },
+            add: { handler: gameAddHandler, requiredRole: 'admin', validateArgs: validateGameNames },
             // remove 不校验 catalogs: 游戏被从配置里删掉后仍要能退订
-            remove: { handler: gameRemoveHandler, requiredRole: 'admin' },
+            remove: {
+                handler: gameRemoveHandler,
+                requiredRole: 'admin',
+                validateArgs: validateRemovalTargets,
+            },
         },
     },
     // 一级: 指令名 → 定义

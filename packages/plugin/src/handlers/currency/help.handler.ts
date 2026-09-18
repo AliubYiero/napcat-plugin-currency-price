@@ -57,7 +57,7 @@ function buildHelpText(variant: HelpVariant, prefix: string): string {
             '',
             '管理指令',
             `${prefix} notify on|off            开启／关闭本会话通知`,
-            `${prefix} game add|remove <游戏名>  订阅／退订游戏`,
+            `${prefix} game add|remove <游戏名...>  订阅／退订游戏 (可空格分隔多个)`,
         );
     }
 
