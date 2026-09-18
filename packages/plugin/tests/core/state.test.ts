@@ -30,7 +30,7 @@ describe('DEFAULT_CONFIG — 默认值契约', () => {
             '流放之路1',
             '火炬之光',
         ]);
-        expect(zoneCount).toBe(10);
+        expect(zoneCount).toBe(6);
     });
 });
 
