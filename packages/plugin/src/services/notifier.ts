@@ -20,14 +20,8 @@ import { pluginState } from '../core/state';
 import { sendGroupMessage, sendPrivateMessage } from '../handlers/utils';
 import { DataStore } from '../store/data.store';
 import { SessionStore } from '../store/session.store';
+import { createSendPacer } from '../utils/pacing';
 import { renderGame } from './renderer';
-
-/** 两条消息之间的等待 */
-function sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => {
-        setTimeout(resolve, ms);
-    });
-}
 
 /** 送到目标会话。群与私聊各走各的接口——`send_msg` 的目标字段不同 */
 async function deliver(
@@ -60,12 +54,11 @@ export async function pushToSubscribers(
 ): Promise<void> {
     const sessions = SessionStore.getInstance().getSessions();
     const store = DataStore.getInstance();
-    const interval = pluginState.config.pushIntervalMs;
     const ctx = pluginState.ctx;
 
-    // 全局串行游标: 消息**一条一条发**, 间隔加在相邻两条之间（含跨会话的那一次接续）。
+    // 全局串行节拍: 消息**一条一条发**, 间隔加在相邻两条之间（含跨会话的那一次接续）。
     // 「串行本身不解决频控, 间隔才是」——边界在 QQ 服务端, 因部署而异（§10.3）
-    let sentAny = false;
+    const pace = createSendPacer(pluginState.config.pushIntervalMs);
 
     for (const [sessionKey, session] of Object.entries(sessions)) {
         if (!session.notifyEnabled) continue;
@@ -82,8 +75,7 @@ export async function pushToSubscribers(
             // 从未成功抓到过 → 没有旧值可推, 跳过（§10.3）
             if (!record) continue;
 
-            if (sentAny && interval > 0) await sleep(interval);
-            sentAny = true;
+            await pace();
 
             await deliver(
                 ctx,

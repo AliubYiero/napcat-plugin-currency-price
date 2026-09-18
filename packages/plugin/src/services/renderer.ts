@@ -33,6 +33,8 @@ export interface RenderOptions {
  * - 头部时间用**游戏级 `readAt`** 并转本地时区。区服级 `readAt` 留在数据文件里——
  *   同一轮内各区服只差几秒, 显示出来是噪音。
  * - **过滤掉 `price` 为 `0` 或 `null` 的行**, 在组合末尾交代数量。
+ * - 一个区服**只有一条数据时不编号**, 用 ` · ` 打头（与 `1. ` 等宽）——只有一个候选时
+ *   数字序号不提供任何信息, 只是噪音。**逐区服判定**, 同一游戏里可以有的编号有的不编号。
  * - 整块都没取到时**仍显示标题**, 否则用户会以为这个区服没在抓。
  * - `missing`（配置的通货名在站点上不存在）**单独成行**: 被过滤掉的行在消息里看不见,
  *   这是配置写错时用户唯一的可见信号。
@@ -51,7 +53,8 @@ export function renderGame(
         const visible = zone.prices.filter((price) => price.price !== null && price.price !== 0);
 
         visible.forEach((price, index) => {
-            lines.push(`${index + 1}. ${price.name} ${price.price}${price.unit ? ` ${price.unit}` : ''}`);
+            const entry = `${price.name} ${price.price}${price.unit ? ` ${price.unit}` : ''}`;
+            lines.push(visible.length > 1 ? `${index + 1}. ${entry}` : ` · ${entry}`);
         });
 
         const skipped = zone.prices.length - visible.length;

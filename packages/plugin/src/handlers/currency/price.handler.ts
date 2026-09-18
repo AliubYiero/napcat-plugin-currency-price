@@ -4,8 +4,11 @@
  * 见设计文档 §12.2（手动刷新）与 §12.3（展示）。
  *
  * 抓取范围是**本会话订阅里过期的**（片 05）: 全部新鲜时不起浏览器, 直接展示。
- * 抓取前先回执「正在抓取…」, 再抢全局锁（占用则排队）; **轮到自己时重新计算**
+ * 抓取前先回执「正在获取…」, 再抢全局锁（占用则排队）; **轮到自己时重新计算**
  * 过期集合——排队期间别人可能已经抓过了, 此时直接复用。
+ *
+ * 展示**一个游戏一条消息**（§12.3）——一个群订了三个游戏源, 那就是三条独立的文本,
+ * 而不是塞进一条里让人自己找。相邻两条之间沿用 `pushIntervalMs`（§10.3）。
  *
  * 归档（`trigger: "manual:{会话键}"`）由共享的 `runScrapeRound` 落定（片 07/08）。
  */
@@ -23,6 +26,7 @@ import { renderGame } from '../../services/renderer';
 import { scrapeGames } from '../../services/scraper';
 import { DataStore } from '../../store/data.store';
 import { SessionStore } from '../../store/session.store';
+import { createSendPacer } from '../../utils/pacing';
 import { sendReply } from '../utils';
 
 /**
@@ -34,7 +38,7 @@ import { sendReply } from '../utils';
 export const SERVICE_UNAVAILABLE = '服务不可用，请联系机器人管理员';
 
 /** 手动抓取前的回执。抓取可能要跑几十秒, 期间用户需要知道指令被收到了 */
-export const SCRAPING_NOTICE = '正在抓取…';
+export const SCRAPING_NOTICE = '正在获取通货价格数据，请稍等...';
 
 /**
  * `price` 的依赖注入点。
@@ -104,14 +108,33 @@ export async function priceHandler(
         });
     }
 
-    await sendReply(ctx, event, renderSessionGames(session.enabledGames, failed));
+    const blocks = renderSessionGames(session.enabledGames, failed);
+
+    // 一条都渲染不出来（本轮失败且这几个游戏从未成功抓到过）→ 必须补一句话。
+    // 抓取前已经回过「正在获取…」, 此时静默收场会让用户一直等一个不会来的结果
+    if (blocks.length === 0) {
+        await sendReply(ctx, event, NO_DATA_FETCHED);
+
+        return;
+    }
+
+    // 一个游戏一条消息, 串行发、相邻两条之间沿用推送的那套间隔（§10.3）
+    const pace = createSendPacer(pluginState.config.pushIntervalMs);
+
+    for (const block of blocks) {
+        await pace();
+        await sendReply(ctx, event, block);
+    }
 }
 
 /** 本会话没有可抓的游戏时的提示（还没订阅, 或订阅的游戏已从配置里删掉） */
 export const NO_GAME_TO_SCRAPE = '本会话没有可抓取的游戏，用 game 指令查看并订阅';
 
+/** 本轮一条都没抓到、也没有旧值可展示时的兜底文案。**不静默**——前面已经回过执了 */
+export const NO_DATA_FETCHED = '本轮未获取到数据';
+
 /**
- * 按**本会话订阅顺序**渲染全部游戏。
+ * 按**本会话订阅顺序**渲染全部游戏, **一个游戏一条消息**。
  *
  * 顺序取自 `enabledGames` 而不是 `catalogs`: 用户按什么顺序订的, 就按什么顺序看。
  * 没有数据的游戏（从未成功抓到过）直接跳过——展示一个空壳只会让人以为抓到了。
@@ -119,11 +142,13 @@ export const NO_GAME_TO_SCRAPE = '本会话没有可抓取的游戏，用 game �
  * ⚠️ 渲染一律走 `services/renderer` 的 `renderGame`（§12.3）——定时推送用的是同一个
  * 函数。两处各写一份模板, 迟早会在改文案时漏掉一处, 表现是同一条数据在两个场景里
  * 长得不一样。
+ *
+ * @returns 每个游戏一条文本。全部游戏都没数据时是空数组——调用方据此不发消息
  */
 function renderSessionGames(
     enabledGames: string[],
     failedGames: ReadonlySet<string>,
-): string {
+): string[] {
     const store = DataStore.getInstance();
     const blocks: string[] = [];
 
@@ -134,5 +159,5 @@ function renderSessionGames(
         }
     }
 
-    return blocks.join('\n\n');
+    return blocks;
 }

@@ -2,7 +2,7 @@
  * `price` 指令
  *
  * 见设计文档 §12.2 与 §12.3。本片落定的是**手动刷新的前半段**: 什么时候直接回
- * 「服务不可用」、什么时候先回执「正在抓取…」、以及抓完怎么展示。
+ * 「服务不可用」、什么时候先回执「正在获取…」、以及抓完怎么展示。
  *
  * 新鲜度（只重抓过期的）与互斥锁在片 05, 归档在片 07——本片的 `price` 会抓**全部**
  * 订阅游戏。这不是"简化实现", 是这一步的范围边界。
@@ -19,6 +19,7 @@ import { priceHandlerDeps } from '../../../src/handlers/currency/price.handler';
 import { pushToSubscribers } from '../../../src/services/notifier';
 import { detectBrowserLightweight, invalidateBrowserStatus } from '../../../src/services/browser/status';
 import type { DetectOptions } from '../../../src/services/browser/launcher';
+import { DataStore } from '../../../src/store/data.store';
 import { SessionStore } from '../../../src/store/session.store';
 import { createTestEnv, groupMessage, type TestEnv } from '../../helpers/test-env';
 
@@ -67,7 +68,7 @@ async function send(event: Parameters<typeof handleMessage>[1]): Promise<string>
     return env.sent.at(-1) ?? '';
 }
 
-/** 回执「正在抓取…」会先发一条, 取最后一条即为结果 */
+/** 回执「正在获取…」会先发一条, 取最后一条即为结果 */
 async function sendAll(event: Parameters<typeof handleMessage>[1]): Promise<string[]> {
     env.clearSent();
     await handleMessage(env.ctx, event);
@@ -125,13 +126,55 @@ async function subscribeAndStub(gameName: string, result: ReturnType<typeof okRe
 }
 
 describe('price — 抓取与展示', () => {
-    it('**先回执「正在抓取…」**, 抓完再发结果（抓取要跑几十秒, 用户需要知道指令被收到了）', async () => {
+    it('**先回执「正在获取通货价格数据，请稍等...」**, 抓完再发结果（抓取要跑几十秒, 用户需要知道指令被收到了）', async () => {
         await subscribeAndStub('流放之路2', okResult());
 
         const messages = await sendAll(groupMessage('#currency price'));
 
         expect(messages).toHaveLength(2);
-        expect(messages[0]).toBe('正在抓取…');
+        expect(messages[0]).toBe('正在获取通货价格数据，请稍等...');
+    });
+
+    it('**数据全新鲜、不起浏览器时不发回执**——没有"正在获取"这回事, 直接出结果', async () => {
+        await subscribeAndStub('流放之路2', okResult());
+
+        // 让 `data.json` 里留下一份**刚刚抓到的**数据: `readAt` 取当前时刻, 稳在 5 分钟窗口内
+        DataStore.getInstance().saveGameResult('流放之路2', {
+            ...okResult(),
+            readAt: new Date().toISOString(),
+        });
+
+        let scraped = 0;
+        priceHandlerDeps.scrape = async () => {
+            scraped++;
+
+            return {};
+        };
+
+        const messages = await sendAll(groupMessage('#currency price'));
+
+        expect(scraped).toBe(0);
+        expect(messages).toHaveLength(1);
+        expect(messages[0]).toContain('流放之路2');
+    });
+
+    it('订阅多个游戏源时,**每个游戏一条独立的文本消息**', async () => {
+        await send(groupMessage('#currency game add 流放之路2', { role: 'admin' }));
+        await send(groupMessage('#currency game add 火炬之光', { role: 'admin' }));
+        priceHandlerDeps.scrape = async () => ({
+            流放之路2: okResult(),
+            火炬之光: okResult(),
+        });
+
+        const messages = await sendAll(groupMessage('#currency price'));
+
+        // 回执 + 两条结果
+        expect(messages).toHaveLength(3);
+        expect(messages[1]).toContain('「流放之路2」');
+        expect(messages[2]).toContain('「火炬之光」');
+        // 一个游戏一条: 任何一条里都不该出现另一个游戏
+        expect(messages[1]).not.toContain('火炬之光');
+        expect(messages[2]).not.toContain('流放之路2');
     });
 
     it('展示价格与单位（单位由页面的「计价单位 / 基准单位」拼成）', async () => {
@@ -210,6 +253,15 @@ describe('price — 抓取与展示', () => {
         expect(reply).not.toContain('崇高石');
         expect(reply).not.toContain('卡兰德的魔镜');
         expect(reply).toContain('2 项未取到价格');
+    });
+
+    it('**本轮失败且没有旧值**时补一句「本轮未获取到数据」——前面回过执, 静默收场会让人干等', async () => {
+        await subscribeAndStub('流放之路2', okResult());
+        priceHandlerDeps.scrape = async () => ({ 流放之路2: { error: '页面打不开' } });
+
+        const messages = await sendAll(groupMessage('#currency price'));
+
+        expect(messages).toEqual(['正在获取通货价格数据，请稍等...', '本轮未获取到数据']);
     });
 
     it('抓取失败、回退旧数据时展示带「（数据未更新）」——展示不该假装数据是新的（§12.3）', async () => {

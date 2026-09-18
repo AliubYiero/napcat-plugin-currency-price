@@ -113,10 +113,41 @@ describe('renderGame — 区服组合块', () => {
             }),
         );
 
-        expect(text).toContain('1. 神圣石 0.2444 元/个');
+        expect(text).toContain(' · 神圣石 0.2444 元/个');
         expect(text).not.toContain('崇高石');
         expect(text).not.toContain('卡兰德的魔镜');
         expect(text).toContain('（2 项未取到价格）');
+    });
+
+    it('**一个区服只有一条数据时不编号**, 用 ` · ` 打头；多条才是数字序号', () => {
+        const text = renderGame(
+            '流放之路2',
+            record({
+                zones: [
+                    {
+                        zone: ['国服'],
+                        readAt: '2026-09-16T08:00:00.000Z',
+                        prices: [{ name: '神圣石', price: 0.2444, unit: '元/个' }],
+                    },
+                    {
+                        zone: ['国际服'],
+                        readAt: '2026-09-16T08:00:00.000Z',
+                        prices: [
+                            { name: '神圣石', price: 1.5, unit: '元/个' },
+                            { name: '崇高石', price: 2.5, unit: '元/个' },
+                        ],
+                    },
+                ],
+            }),
+        );
+
+        const lines = text.split('\n');
+
+        expect(lines).toContain(' · 神圣石 0.2444 元/个');
+        expect(lines).toContain('1. 神圣石 1.5 元/个');
+        expect(lines).toContain('2. 崇高石 2.5 元/个');
+        // 编号是**逐区服**判定的, 不是整个游戏一个开关
+        expect(lines).not.toContain('1. 神圣石 0.2444 元/个');
     });
 
     it('价格**原样显示**, 不做固定小数位', () => {
@@ -136,8 +167,8 @@ describe('renderGame — 区服组合块', () => {
             }),
         );
 
-        expect(text).toContain('初火源质 0.0012 元/火');
-        expect(text).toContain('神圣石 1.5 元/个');
+        expect(text).toContain('1. 初火源质 0.0012 元/火');
+        expect(text).toContain('2. 神圣石 1.5 元/个');
     });
 
     it('**`missing` 单独成行**并交代数量——配置写错时用户唯一的可见信号', () => {
