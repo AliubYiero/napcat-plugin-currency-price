@@ -16,6 +16,7 @@ import type { Page, Response } from 'playwright-core';
 import type { CatalogPage, ZoneExpectation } from './index';
 import {
     CURRENCY_SELECTORS,
+    hasRenderedExpected,
     parseZoneSpecIds,
     readCurrencyList,
     type CascadeNode,
@@ -154,22 +155,11 @@ export function createCatalogPage(page: Page): CatalogPage {
         },
 
         async waitForListRendered(expected, currencyList) {
-            // 只比对**接口真的给了价**的那些通货: 接口没给的不参与, 否则永远对不上
-            const comparable = currencyList.filter((name) => expected.has(name));
-
+            // 判据本身是纯逻辑（`hasRenderedExpected`）, 放在 parse.ts 里单测钉死;
+            // 这里只剩"采样若干次直到对得上"的页面时序
             for (let i = 0; i < RENDER_SAMPLES; i++) {
                 const rows = await page.evaluate(readCurrencyList, CURRENCY_SELECTORS);
-
-                const matched = comparable.every((name) => {
-                    const hit = rows.find((item) => item.name === name);
-                    if (!hit || hit.priceText === null) return false;
-
-                    const price = Number.parseFloat(hit.priceText.replace(/,/g, ''));
-
-                    return Number.isFinite(price) && isPriceEqual(price, expected.get(name) ?? Number.NaN);
-                });
-
-                if (matched) return true;
+                if (hasRenderedExpected(rows, expected, currencyList)) return true;
 
                 await delay(RENDER_INTERVAL_MS);
             }
@@ -323,11 +313,6 @@ async function recordZoneExpected(
     );
 
     for (const specId of specIds) cache.set(String(specId), expected);
-}
-
-/** 比较两个价格是否一致。容忍前端可能的浮点格式化差异, 但不容忍数量级偏差 */
-function isPriceEqual(a: number, b: number): boolean {
-    return Math.abs(a - b) <= Math.max(1e-9, Math.abs(b) * 1e-6);
 }
 
 /** 收起可能处于展开状态的级联面板, 让重试从干净状态重新开始选择 */

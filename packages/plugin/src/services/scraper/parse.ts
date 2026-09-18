@@ -185,6 +185,57 @@ export function parseCurrencyRow(row: RawCurrencyRow): PriceItem {
     return { name: row.name, price, unit };
 }
 
+// ==================== 渲染完成判定 ====================
+
+/** 两个价格是否一致。容忍前端可能的浮点格式化差异 (`1.23` ≡ `1.2300`), 但不容忍数量级偏差 */
+function isPriceEqual(a: number, b: number): boolean {
+    return Math.abs(a - b) <= Math.max(1e-9, Math.abs(b) * 1e-6);
+}
+
+/**
+ * 判断 DOM 读到的行是否**已经渲染出接口返回的价格**。
+ *
+ * 这是「响应到达 ≠ DOM 已更新」这条防线的判据: 切换区服时列表会先清空再重绘,
+ * 响应刚回来时读到的可能是空列表或上一个区服的旧值。
+ *
+ * ⚠️ **接口判为「无报价」(0) 的通货, 页面上本来就只有占位符**——那是渲染完成的正确形态,
+ * 不是"没渲染"。把这种形态当成未渲染, 表现是**整个游戏本轮作废**: 流放之路1 的「专家」
+ * 区服接口对所有通货都给 0、页面如实显示占位符, 却因为"要求页面上有数字"而永远等不到
+ * 匹配, 采样 5 秒后抛错 (实测于 2026-09-18)。
+ *
+ * ⚠️ 判据本身仍是**严格**的, 不是"对不上就放行": 接口给了正价的通货必须读到相同的正价。
+ * 接口给 0 时只要求该行存在且是占位符——上一个区服的旧值只要是正价, 照样会被识破。
+ *
+ * @param rows 当前 DOM 读到的行
+ * @param expected 接口给出的「通货名 → 价格」
+ * @param currencyList 配置的通货清单。**只有接口真的给了价的才参与比对**——接口没给的不比,
+ *   否则永远对不上
+ */
+export function hasRenderedExpected(
+    rows: RawCurrencyRow[],
+    expected: ReadonlyMap<string, number>,
+    currencyList: string[],
+): boolean {
+    return currencyList
+        .filter((name) => expected.has(name))
+        .every((name) => matchesRow(rows.find((item) => item.name === name), expected.get(name)));
+}
+
+/** 单独一行的比对。见 `hasRenderedExpected` 的两条语义说明 */
+function matchesRow(row: RawCurrencyRow | undefined, expectedPrice: number | undefined): boolean {
+    // 行本身还没出现 —— 这个通货还没渲染出来
+    if (!row) return false;
+
+    // 页面显示占位符: 与接口的「无报价」一致; 接口给了正价却读到占位符 = 还没渲染完
+    if (row.priceText === null) return !(typeof expectedPrice === 'number' && expectedPrice > 0);
+
+    // 走 `parsePriceText` 而不是 `Number.parseFloat`: 千分位会被 parseFloat 截断成错值
+    // (`1,234.5` → 1), 判据与产出数据的解析必须是同一套规则, 否则比对会无声地不通过
+    const price = parsePriceText(row.priceText);
+
+    return price !== null && typeof expectedPrice === 'number' && isPriceEqual(price, expectedPrice);
+}
+
 /** 合法千分位: 分组必须是 1~3 位开头, 其后每组恰好 3 位 */
 const THOUSANDS_PATTERN = /^\d{1,3}(,\d{3})+(\.\d+)?$/;
 

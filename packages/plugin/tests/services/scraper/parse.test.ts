@@ -7,6 +7,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+    hasRenderedExpected,
     parseCurrencyRow,
     parsePriceText,
     parseZoneSpecIds,
@@ -104,6 +105,66 @@ describe('parseCurrencyRow — 原始行解析成价格记录', () => {
             price: 0.2444,
             unit: null,
         });
+    });
+});
+
+describe('hasRenderedExpected — DOM 是否已渲染出接口返回的价格', () => {
+    /** 造一行指定名称的原始行 */
+    function named(name: string, priceText: string | null): RawCurrencyRow {
+        return { name, priceText, baseUnit: priceText === null ? null : '个', quoteUnit: priceText === null ? null : '元' };
+    }
+
+    it('接口给了正价、DOM 读到同一个数 → 已渲染', () => {
+        expect(
+            hasRenderedExpected([named('神圣石', '0.0845')], new Map([['神圣石', 0.0845]]), ['神圣石']),
+        ).toBe(true);
+    });
+
+    it('**接口判为无报价 (0) 而页面显示占位符 → 已渲染**（曾把这种形态判为未渲染, 整个游戏本轮作废）', () => {
+        // 实测: 流放之路1 的「国服 / 赛季 / 专家」接口对所有通货都给 0, 页面如实显示占位符
+        expect(
+            hasRenderedExpected([named('神圣石', null)], new Map([['神圣石', 0]]), ['神圣石']),
+        ).toBe(true);
+    });
+
+    it('接口判为无报价、页面却还是**上一个区服的旧正价** → 未渲染（旧值必须被识破）', () => {
+        expect(
+            hasRenderedExpected([named('神圣石', '0.0845')], new Map([['神圣石', 0]]), ['神圣石']),
+        ).toBe(false);
+    });
+
+    it('接口给了正价而页面是占位符 → 未渲染（这条防线不放宽）', () => {
+        expect(
+            hasRenderedExpected([named('神圣石', null)], new Map([['神圣石', 0.0845]]), ['神圣石']),
+        ).toBe(false);
+    });
+
+    it('行本身还没出现 → 未渲染', () => {
+        expect(hasRenderedExpected([], new Map([['神圣石', 0.0845]]), ['神圣石'])).toBe(false);
+    });
+
+    it('千分位价格走与产出数据同一套解析：`1,234.5` 与 1234.5 相等（parseFloat 会截断成 1）', () => {
+        expect(
+            hasRenderedExpected([named('卡兰德的魔镜', '1,234.5')], new Map([['卡兰德的魔镜', 1234.5]]), [
+                '卡兰德的魔镜',
+            ]),
+        ).toBe(true);
+    });
+
+    it('浮点格式化差异（尾随零）不算"未渲染"：`0.1480` 与 `0.148` 是同一个价格', () => {
+        expect(
+            hasRenderedExpected([named('神圣石', '0.1480')], new Map([['神圣石', 0.148]]), ['神圣石']),
+        ).toBe(true);
+    });
+
+    it('接口**没给价**的通货不参与比对——配置里写错的名字只会进 `missing`, 不该卡住整轮抓取', () => {
+        const expected = new Map([['神圣石', 0.0845]]);
+
+        expect(hasRenderedExpected([named('神圣石', '0.0845')], expected, ['神圣石', '不存在的通货'])).toBe(
+            true,
+        );
+        // 接口一个都没给: 无从比对, 不因此判未渲染（由游戏级 `missing` 兜底）
+        expect(hasRenderedExpected([], new Map(), ['神圣石'])).toBe(true);
     });
 });
 
