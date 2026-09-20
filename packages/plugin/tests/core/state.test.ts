@@ -4,7 +4,9 @@ import { DEFAULT_CONFIG } from '../../src/config';
 
 describe('DEFAULT_CONFIG — 默认值契约', () => {
     it('不再包含 cooldownSeconds（指令冷却的语义已被数据新鲜度阈值取代）', () => {
-        expect(Object.keys(DEFAULT_CONFIG)).not.toContain('cooldownSeconds');
+        expect(Object.keys(DEFAULT_CONFIG)).not.toContain(
+            'cooldownSeconds',
+        );
     });
 
     it('指令前缀缺省 #currency', () => {
@@ -51,9 +53,14 @@ describe('sanitizeConfig — pushHours（枚举数组）', () => {
 
     it('字段缺失或类型不对时才回退默认 (全选 0~23)', () => {
         // 期望值是设计文档 §5.1 写死的「默认全选」, 不从 DEFAULT_CONFIG 读——否则是同义反复
-        const everyHour = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
+        const everyHour = [
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+            17, 18, 19, 20, 21, 22, 23,
+        ];
 
-        expect(sanitizeConfig({ pushHours: 'abc' }).pushHours).toEqual(everyHour);
+        expect(
+            sanitizeConfig({ pushHours: 'abc' }).pushHours,
+        ).toEqual(everyHour);
         expect(sanitizeConfig({}).pushHours).toEqual(everyHour);
     });
 });
@@ -61,8 +68,9 @@ describe('sanitizeConfig — pushHours（枚举数组）', () => {
 describe('sanitizeConfig — catalogs（嵌套对象数组）', () => {
     const validCatalog = {
         name: '流放之路2',
-        pageUrl: 'https://qiandao.com/currency/currency-zone?islandId=301000',
-        currencyList: ['神圣石'],
+        pageUrl:
+            'https://qiandao.com/currency/currency-zone?islandId=301000',
+        currencyList: [{ name: '神圣石', detail: false }],
         zoneConfigs: [['国服', '赛季', '普通']],
     };
 
@@ -78,6 +86,75 @@ describe('sanitizeConfig — catalogs（嵌套对象数组）', () => {
         });
 
         expect(out.catalogs).toEqual([validCatalog]);
+    });
+
+    it('**旧形态 `string[]` 静默升级成 `{ name, detail: false }[]`**，不丢用户填的清单', () => {
+        // 形态换成对象数组之后, 旧配置必须能救则救——丢掉用户手填了一长串的清单是最后手段
+        const out = sanitizeConfig({
+            catalogs: [
+                {
+                    ...validCatalog,
+                    currencyList: ['神圣石', '崇高石'],
+                },
+            ],
+        });
+
+        expect(out.catalogs[0]?.currencyList).toEqual([
+            { name: '神圣石', detail: false },
+            { name: '崇高石', detail: false },
+        ]);
+    });
+
+    it('升级出来的 `detail` 一律 `false`——**不替用户打开一个会明显拖长抓取的开关**', () => {
+        const out = sanitizeConfig({
+            catalogs: [{ ...validCatalog, currencyList: ['神圣石'] }],
+        });
+
+        expect(out.catalogs[0]?.currencyList[0]?.detail).toBe(false);
+    });
+
+    it('`detail` 缺失 / 不是布尔都落成 `false`（默认关闭是领域决策，不用真值判断兜底）', () => {
+        const out = sanitizeConfig({
+            catalogs: [
+                {
+                    ...validCatalog,
+                    currencyList: [
+                        { name: '神圣石' },
+                        { name: '崇高石', detail: 'true' },
+                        { name: '混沌石', detail: 1 },
+                    ],
+                },
+            ],
+        });
+
+        expect(
+            out.catalogs[0]?.currencyList.map(
+                (currency) => currency.detail,
+            ),
+        ).toEqual([false, false, false]);
+    });
+
+    it('通货名两侧的空白被剪掉，空名与非对象项丢弃', () => {
+        const out = sanitizeConfig({
+            catalogs: [
+                {
+                    ...validCatalog,
+                    currencyList: [
+                        '  神圣石  ',
+                        '',
+                        '   ',
+                        42,
+                        { detail: true },
+                        { name: '崇高石', detail: true },
+                    ],
+                },
+            ],
+        });
+
+        expect(out.catalogs[0]?.currencyList).toEqual([
+            { name: '神圣石', detail: false },
+            { name: '崇高石', detail: true },
+        ]);
     });
 
     it('zoneConfigs 逐行递归清洗：非字符串元素的行被丢弃，合法行保留', () => {
@@ -104,7 +181,11 @@ describe('sanitizeConfig — catalogs（嵌套对象数组）', () => {
 
 describe('sanitizeConfig — 标量与数值', () => {
     it('类型不对的开关回退默认，不抛错', () => {
-        const out = sanitizeConfig({ enabled: 'yes', debug: 1, allowAtBotTrigger: null });
+        const out = sanitizeConfig({
+            enabled: 'yes',
+            debug: 1,
+            allowAtBotTrigger: null,
+        });
 
         expect(out.enabled).toBe(true);
         expect(out.debug).toBe(false);
@@ -114,33 +195,53 @@ describe('sanitizeConfig — 标量与数值', () => {
     it('**命令前缀不接受外部输入**（开发期常量, 只能改源码后重跑帮助生成）', () => {
         // 允许 WebUI / 配置文件改前缀, 就会出现"帮助图上的指令敲不出来"
         for (const attempt of ['/cp', '   ', 42, null]) {
-            expect(sanitizeConfig({ commandPrefix: attempt }).commandPrefix).toBe('#currency');
+            expect(
+                sanitizeConfig({ commandPrefix: attempt })
+                    .commandPrefix,
+            ).toBe('#currency');
         }
     });
 
     it('pushIntervalMs 为负数或非有限数时回退默认', () => {
-        expect(sanitizeConfig({ pushIntervalMs: -1 }).pushIntervalMs).toBe(100);
-        expect(sanitizeConfig({ pushIntervalMs: Number.NaN }).pushIntervalMs).toBe(100);
-        expect(sanitizeConfig({ pushIntervalMs: 0 }).pushIntervalMs).toBe(0);
+        expect(
+            sanitizeConfig({ pushIntervalMs: -1 }).pushIntervalMs,
+        ).toBe(100);
+        expect(
+            sanitizeConfig({ pushIntervalMs: Number.NaN })
+                .pushIntervalMs,
+        ).toBe(100);
+        expect(
+            sanitizeConfig({ pushIntervalMs: 0 }).pushIntervalMs,
+        ).toBe(0);
     });
 
     it('损坏的配置输入不抛错，整体回退默认', () => {
         for (const broken of [null, undefined, 'oops', 42, []]) {
             expect(() => sanitizeConfig(broken)).not.toThrow();
-            expect(sanitizeConfig(broken).commandPrefix).toBe('#currency');
+            expect(sanitizeConfig(broken).commandPrefix).toBe(
+                '#currency',
+            );
         }
     });
 });
 
 describe('sanitizeConfig — adminUsers（字符串列表 / 超管名单）', () => {
     it('WebUI 的逗号分隔文本在清洗层一次性转数组', () => {
-        const out = sanitizeConfig({ adminUsers: ' 958341409 , 10001 ,, 10002 , ' });
+        const out = sanitizeConfig({
+            adminUsers: ' 958341409 , 10001 ,, 10002 , ',
+        });
 
-        expect(out.adminUsers).toEqual(['958341409', '10001', '10002']);
+        expect(out.adminUsers).toEqual([
+            '958341409',
+            '10001',
+            '10002',
+        ]);
     });
 
     it('已经是数组时同样规范化', () => {
-        const out = sanitizeConfig({ adminUsers: ['958341409', '', '  10001  '] });
+        const out = sanitizeConfig({
+            adminUsers: ['958341409', '', '  10001  '],
+        });
 
         expect(out.adminUsers).toEqual(['958341409', '10001']);
     });

@@ -17,17 +17,23 @@ import type { CatalogConfig } from '../../src/types';
 
 const NOW = 1_789_000_000_000;
 
-function catalog(overrides: Partial<CatalogConfig> = {}): CatalogConfig {
+function catalog(
+    overrides: Partial<CatalogConfig> = {},
+): CatalogConfig {
     return {
         name: '流放之路2',
-        pageUrl: 'https://qiandao.com/currency/currency-zone?catalogName=流放2专区',
-        currencyList: ['神圣石'],
+        pageUrl:
+            'https://qiandao.com/currency/currency-zone?catalogName=流放2专区',
+        currencyList: [{ name: '神圣石', detail: false }],
         zoneConfigs: [['国服', '赛季', '普通']],
         ...overrides,
     };
 }
 
-function record(minuteAge: number, fingerprint = configFingerprintOf(catalog())): GameRecord {
+function record(
+    minuteAge: number,
+    fingerprint = configFingerprintOf(catalog()),
+): GameRecord {
     return {
         readAt: new Date(NOW - minuteAge * 60_000).toISOString(),
         zones: [],
@@ -39,15 +45,21 @@ function record(minuteAge: number, fingerprint = configFingerprintOf(catalog()))
 
 describe('isStaleGame', () => {
     it('超过 5 分钟 → 过期', () => {
-        expect(isStaleGame(record(6).readAt, { now: () => NOW })).toBe(true);
+        expect(
+            isStaleGame(record(6).readAt, { now: () => NOW }),
+        ).toBe(true);
     });
 
     it('**边界恰好 5 分钟 → 新鲜**（判定条件是严格大于）', () => {
-        expect(isStaleGame(record(5).readAt, { now: () => NOW })).toBe(false);
+        expect(
+            isStaleGame(record(5).readAt, { now: () => NOW }),
+        ).toBe(false);
     });
 
     it('5 分钟以内 → 新鲜', () => {
-        expect(isStaleGame(record(2).readAt, { now: () => NOW })).toBe(false);
+        expect(
+            isStaleGame(record(2).readAt, { now: () => NOW }),
+        ).toBe(false);
     });
 
     it('**从未抓到过（readAt 不存在）→ 过期**', () => {
@@ -57,7 +69,9 @@ describe('isStaleGame', () => {
     });
 
     it('readAt 无法解析 → 过期（宁可多抓, 不可当新的用）', () => {
-        expect(isStaleGame('not-a-date', { now: () => NOW })).toBe(true);
+        expect(isStaleGame('not-a-date', { now: () => NOW })).toBe(
+            true,
+        );
     });
 
     it('阈值常量是 5 分钟, 且**不是配置项**', () => {
@@ -69,35 +83,93 @@ describe('configFingerprintOf', () => {
     it('**决定抓到什么的三个字段**变一个, 指纹就变', () => {
         const base = configFingerprintOf(catalog());
 
-        expect(configFingerprintOf(catalog({ pageUrl: 'https://qiandao.com/别的页面' }))).not.toBe(base);
-        expect(configFingerprintOf(catalog({ currencyList: ['崇高石'] }))).not.toBe(base);
-        expect(configFingerprintOf(catalog({ zoneConfigs: [['国际服', '赛季', '普通']] }))).not.toBe(base);
+        expect(
+            configFingerprintOf(
+                catalog({ pageUrl: 'https://qiandao.com/别的页面' }),
+            ),
+        ).not.toBe(base);
+        expect(
+            configFingerprintOf(
+                catalog({
+                    currencyList: [{ name: '崇高石', detail: false }],
+                }),
+            ),
+        ).not.toBe(base);
+        expect(
+            configFingerprintOf(
+                catalog({
+                    zoneConfigs: [['国际服', '赛季', '普通']],
+                }),
+            ),
+        ).not.toBe(base);
+    });
+
+    it('**详情开关也在指纹里**——开了详情的那份数据与没开的那份不是同一份（ADR-0005 结论 4）', () => {
+        const base = configFingerprintOf(catalog());
+
+        // 开启后旧数据（那份里没有详情）立即判过期, 不必等 5 分钟的新鲜度窗口
+        expect(
+            configFingerprintOf(
+                catalog({
+                    currencyList: [{ name: '神圣石', detail: true }],
+                }),
+            ),
+        ).not.toBe(base);
+    });
+
+    it('通货清单的**顺序**也算数（与区服组合同理, 它就是消息里的呈现顺序）', () => {
+        const two = [
+            { name: '神圣石', detail: false },
+            { name: '崇高石', detail: false },
+        ];
+
+        expect(
+            configFingerprintOf(catalog({ currencyList: two })),
+        ).not.toBe(
+            configFingerprintOf(
+                catalog({ currencyList: [...two].reverse() }),
+            ),
+        );
     });
 
     it('组合的**顺序**算数——它就是消息里区服的呈现顺序', () => {
         const twoZones = [['国服'], ['国际服']];
 
-        expect(configFingerprintOf(catalog({ zoneConfigs: twoZones })))
-            .not.toBe(configFingerprintOf(catalog({ zoneConfigs: [...twoZones].reverse() })));
+        expect(
+            configFingerprintOf(catalog({ zoneConfigs: twoZones })),
+        ).not.toBe(
+            configFingerprintOf(
+                catalog({ zoneConfigs: [...twoZones].reverse() }),
+            ),
+        );
     });
 
     it('`name` 不进指纹——名字是记录的键, 改名相当于换了个游戏（由"无记录"覆盖）', () => {
-        expect(configFingerprintOf(catalog({ name: '流放之路1' })))
-            .toBe(configFingerprintOf(catalog()));
+        expect(
+            configFingerprintOf(catalog({ name: '流放之路1' })),
+        ).toBe(configFingerprintOf(catalog()));
     });
 });
 
 describe('getStaleGames', () => {
     /** 记录表: 游戏名 → 记录。指纹按"这份数据是用传进来的这份配置抓的"构造 */
     function depsWith(records: Record<string, GameRecord | null>) {
-        return { now: () => NOW, getGame: (name: string) => records[name] ?? null };
+        return {
+            now: () => NOW,
+            getGame: (name: string) => records[name] ?? null,
+        };
     }
 
     it('只筛出过期的; 全部新鲜时返回空（→ 完全不启动浏览器）', () => {
         const target = catalog({ name: 'freshGame' });
 
         expect(
-            getStaleGames([target], depsWith({ freshGame: record(2, configFingerprintOf(target)) })),
+            getStaleGames(
+                [target],
+                depsWith({
+                    freshGame: record(2, configFingerprintOf(target)),
+                }),
+            ),
         ).toEqual([]);
     });
 
@@ -105,25 +177,37 @@ describe('getStaleGames', () => {
         const fresh = catalog({ name: 'freshGame' });
         const stale = catalog({ name: 'staleGame' });
 
-        expect(getStaleGames(
-            [fresh, stale],
-            depsWith({
-                freshGame: record(2, configFingerprintOf(fresh)),
-                staleGame: record(15, configFingerprintOf(stale)),
-            }),
-        )).toEqual(['staleGame']);
+        expect(
+            getStaleGames(
+                [fresh, stale],
+                depsWith({
+                    freshGame: record(2, configFingerprintOf(fresh)),
+                    staleGame: record(15, configFingerprintOf(stale)),
+                }),
+            ),
+        ).toEqual(['staleGame']);
     });
 
     it('从未抓到的游戏判过期', () => {
-        expect(getStaleGames([catalog({ name: 'neverGame' })], depsWith({}))).toEqual(['neverGame']);
+        expect(
+            getStaleGames(
+                [catalog({ name: 'neverGame' })],
+                depsWith({}),
+            ),
+        ).toEqual(['neverGame']);
     });
 
     it('**配置改过 → 过期**, 哪怕数据是一分钟前刚抓的', () => {
-        const target = catalog({ zoneConfigs: [['国服', '赛季', '专家']] });
+        const target = catalog({
+            zoneConfigs: [['国服', '赛季', '专家']],
+        });
 
         // 记录是**旧配置**（不同组合）抓的
         expect(
-            getStaleGames([target], depsWith({ 流放之路2: record(1) })),
+            getStaleGames(
+                [target],
+                depsWith({ 流放之路2: record(1) }),
+            ),
         ).toEqual(['流放之路2']);
     });
 
@@ -131,14 +215,29 @@ describe('getStaleGames', () => {
         const target = catalog();
 
         expect(
-            getStaleGames([target], depsWith({ 流放之路2: record(1, '') })),
+            getStaleGames(
+                [target],
+                depsWith({ 流放之路2: record(1, '') }),
+            ),
         ).toEqual(['流放之路2']);
     });
 
     it('保持传入顺序输出——抓取顺序是展示顺序的依据', () => {
-        expect(getStaleGames(
-            [catalog({ name: 'neverGame' }), catalog({ name: 'staleGame' })],
-            depsWith({ staleGame: record(15, configFingerprintOf(catalog({ name: 'staleGame' }))) }),
-        )).toEqual(['neverGame', 'staleGame']);
+        expect(
+            getStaleGames(
+                [
+                    catalog({ name: 'neverGame' }),
+                    catalog({ name: 'staleGame' }),
+                ],
+                depsWith({
+                    staleGame: record(
+                        15,
+                        configFingerprintOf(
+                            catalog({ name: 'staleGame' }),
+                        ),
+                    ),
+                }),
+            ),
+        ).toEqual(['neverGame', 'staleGame']);
     });
 });

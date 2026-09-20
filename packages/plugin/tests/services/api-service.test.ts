@@ -11,14 +11,23 @@ import { DEFAULT_CONFIG } from '../../src/config';
 import { pluginState } from '../../src/core/state';
 import { handleMessage } from '../../src/handlers/message-handler';
 import { priceHandlerDeps } from '../../src/handlers/currency/price.handler';
-import { registerApiRoutes, apiServiceDeps } from '../../src/services/api-service';
-import { schedulerTick, stopScheduler } from '../../src/services/scheduler';
+import {
+    registerApiRoutes,
+    apiServiceDeps,
+} from '../../src/services/api-service';
+import {
+    schedulerTick,
+    stopScheduler,
+} from '../../src/services/scheduler';
 import {
     detectBrowserLightweight,
     detectBrowserFull,
     invalidateBrowserStatus,
 } from '../../src/services/browser/status';
-import { installerDeps, resetInstallState } from '../../src/services/browser/chrome-installer';
+import {
+    installerDeps,
+    resetInstallState,
+} from '../../src/services/browser/chrome-installer';
 import type { DetectOptions } from '../../src/services/browser/launcher';
 import { SessionStore } from '../../src/store/session.store';
 import {
@@ -40,11 +49,17 @@ const WITH_CHROME: DetectOptions = {
     isFile: (path) => path === CHROMIUM,
 };
 
-const WITHOUT_CHROME: DetectOptions = { ...WITH_CHROME, isFile: () => false };
+const WITHOUT_CHROME: DetectOptions = {
+    ...WITH_CHROME,
+    isFile: () => false,
+};
 
 /** 假浏览器。`version()` 是判定"真的 launch 过"的唯一途径 */
 function fakeBrowser(version = '141.0.7390.54') {
-    return { version: () => version, close: async (): Promise<void> => {} };
+    return {
+        version: () => version,
+        close: async (): Promise<void> => {},
+    };
 }
 
 beforeEach(() => {
@@ -73,7 +88,8 @@ describe('/chrome/status — 只读缓存（本片头号验收项）', () => {
         });
         expect(launched).toBe(1);
 
-        for (let i = 0; i < 10; i++) await env.callRoute('GET /chrome/status');
+        for (let i = 0; i < 10; i++)
+            await env.callRoute('GET /chrome/status');
 
         expect(launched).toBe(1);
     });
@@ -90,19 +106,27 @@ describe('/chrome/status — 只读缓存（本片头号验收项）', () => {
         });
 
         const afterDetect = fileChecks;
-        for (let i = 0; i < 5; i++) await env.callRoute('GET /chrome/status');
+        for (let i = 0; i < 5; i++)
+            await env.callRoute('GET /chrome/status');
 
         expect(fileChecks).toBe(afterDetect);
     });
 
     it('返回可用性、路径与版本', async () => {
-        await detectBrowserFull({ ...WITH_CHROME, launch: async () => fakeBrowser('141.0.7390.54') });
+        await detectBrowserFull({
+            ...WITH_CHROME,
+            launch: async () => fakeBrowser('141.0.7390.54'),
+        });
 
         const { body } = await env.callRoute('GET /chrome/status');
 
         expect(body).toMatchObject({
             code: 0,
-            data: { available: true, path: CHROMIUM, version: '141.0.7390.54' },
+            data: {
+                available: true,
+                path: CHROMIUM,
+                version: '141.0.7390.54',
+            },
         });
     });
 
@@ -111,8 +135,13 @@ describe('/chrome/status — 只读缓存（本片头号验收项）', () => {
 
         const { body } = await env.callRoute('GET /chrome/status');
 
-        expect(body).toMatchObject({ code: 0, data: { available: false } });
-        expect((body as { data: { error: string } }).data.error).toBeTruthy();
+        expect(body).toMatchObject({
+            code: 0,
+            data: { available: false },
+        });
+        expect(
+            (body as { data: { error: string } }).data.error,
+        ).toBeTruthy();
     });
 });
 
@@ -124,29 +153,37 @@ describe('/chrome/detect — 执行检测并刷新缓存', () => {
     });
 
     it('执行检测并返回路径与版本', async () => {
-        apiServiceDeps.detectBrowserFull = () => detectBrowserFull({
-            ...WITH_CHROME,
-            launch: async () => fakeBrowser('141.0.7390.54'),
-        });
+        apiServiceDeps.detectBrowserFull = () =>
+            detectBrowserFull({
+                ...WITH_CHROME,
+                launch: async () => fakeBrowser('141.0.7390.54'),
+            });
 
         const { body } = await env.callRoute('POST /chrome/detect');
 
         expect(body).toMatchObject({
             code: 0,
-            data: { available: true, path: CHROMIUM, version: '141.0.7390.54' },
+            data: {
+                available: true,
+                path: CHROMIUM,
+                version: '141.0.7390.54',
+            },
         });
     });
 
     it('检测结果进缓存——之后 `/chrome/status` 能读到', async () => {
-        apiServiceDeps.detectBrowserFull = () => detectBrowserFull({
-            ...WITH_CHROME,
-            launch: async () => fakeBrowser('141.0.7390.54'),
-        });
+        apiServiceDeps.detectBrowserFull = () =>
+            detectBrowserFull({
+                ...WITH_CHROME,
+                launch: async () => fakeBrowser('141.0.7390.54'),
+            });
 
         await env.callRoute('POST /chrome/detect');
         const { body } = await env.callRoute('GET /chrome/status');
 
-        expect(body).toMatchObject({ data: { available: true, version: '141.0.7390.54' } });
+        expect(body).toMatchObject({
+            data: { available: true, version: '141.0.7390.54' },
+        });
     });
 });
 
@@ -158,9 +195,14 @@ describe('/chrome/install 与进度', () => {
     });
 
     it('没装过时进度是「未在安装」, 不是空响应', async () => {
-        const { body } = await env.callRoute('GET /chrome/install/progress');
+        const { body } = await env.callRoute(
+            'GET /chrome/install/progress',
+        );
 
-        expect(body).toMatchObject({ code: 0, data: { running: false, error: null } });
+        expect(body).toMatchObject({
+            code: 0,
+            data: { running: false, error: null },
+        });
     });
 
     it('**触发安装**后能读到进度`, 且进度带当前源名', async () => {
@@ -178,14 +220,23 @@ describe('/chrome/install 与进度', () => {
             });
             await gate;
 
-            return { path: CHROMIUM, source: 'npmmirror CDN', version: '141' };
+            return {
+                path: CHROMIUM,
+                source: 'npmmirror CDN',
+                version: '141',
+            };
         };
 
         await env.callRoute('POST /chrome/install');
 
-        const { body } = await env.callRoute('GET /chrome/install/progress');
+        const { body } = await env.callRoute(
+            'GET /chrome/install/progress',
+        );
         expect(body).toMatchObject({
-            data: { running: true, progress: { percent: 0.4, source: 'npmmirror CDN' } },
+            data: {
+                running: true,
+                progress: { percent: 0.4, source: 'npmmirror CDN' },
+            },
         });
 
         release();
@@ -193,18 +244,25 @@ describe('/chrome/install 与进度', () => {
 
     it('安装失败时进度里留下**可读的失败原因**（多源逐个回退后的总结）', async () => {
         installerDeps.install = async () => {
-            throw new Error('Chrome 安装失败，所有下载源都不可用：\n- Google：连接超时');
+            throw new Error(
+                'Chrome 安装失败，所有下载源都不可用：\n- Google：连接超时',
+            );
         };
 
         await env.callRoute('POST /chrome/install');
         // 安装是后台跑的, 让出一次事件循环等它落定
         await new Promise((resolve) => setTimeout(resolve, 0));
 
-        const { body } = await env.callRoute('GET /chrome/install/progress');
-        expect((body as { data: { error: string; running: boolean } }).data.error).toContain(
-            '所有下载源都不可用',
+        const { body } = await env.callRoute(
+            'GET /chrome/install/progress',
         );
-        expect((body as { data: { running: boolean } }).data.running).toBe(false);
+        expect(
+            (body as { data: { error: string; running: boolean } })
+                .data.error,
+        ).toContain('所有下载源都不可用');
+        expect(
+            (body as { data: { running: boolean } }).data.running,
+        ).toBe(false);
     });
 });
 
@@ -219,7 +277,14 @@ describe('/status — 各游戏最后抓取时间', () => {
         const { body } = await env.callRoute('GET /status');
 
         expect(body).toMatchObject({
-            data: { games: [{ name: '流放之路2', readAt: '2026-09-16T08:00:05.123Z' }] },
+            data: {
+                games: [
+                    {
+                        name: '流放之路2',
+                        readAt: '2026-09-16T08:00:05.123Z',
+                    },
+                ],
+            },
         });
     });
 });
@@ -231,7 +296,7 @@ describe('/catalogs — 分区配置的读写', () => {
                 name: '流放之路2',
                 pageUrl: FULL_PAGE_URL,
                 zoneConfigs: [['国服', '赛季', '普通']],
-                currencyList: ['神圣石'],
+                currencyList: [{ name: '神圣石', detail: false }],
             },
         ];
 
@@ -244,7 +309,7 @@ describe('/catalogs — 分区配置的读写', () => {
                     name: '流放之路2',
                     pageUrl: FULL_PAGE_URL,
                     zoneConfigs: [['国服', '赛季', '普通']],
-                    currencyList: ['神圣石'],
+                    currencyList: [{ name: '神圣石', detail: false }],
                 },
             ],
         });
@@ -257,12 +322,17 @@ describe('POST /catalogs — 保存后下一轮就按新配置走', () => {
             {
                 name: '火炬之光',
                 pageUrl: FULL_PAGE_URL,
-                zoneConfigs: [['赛季', '普通'], ['赛季', '专家']],
-                currencyList: ['初火源质'],
+                zoneConfigs: [
+                    ['赛季', '普通'],
+                    ['赛季', '专家'],
+                ],
+                currencyList: [{ name: '初火源质', detail: false }],
             },
         ];
 
-        const { body } = await env.callRoute('POST /catalogs', { body: { catalogs: next } });
+        const { body } = await env.callRoute('POST /catalogs', {
+            body: { catalogs: next },
+        });
 
         expect(body).toMatchObject({ code: 0 });
         // 内存配置是**唯一真源**: `price` / 调度器每轮都从这里现读, 不缓存副本
@@ -279,12 +349,16 @@ describe('POST /catalogs — 清洗在保存路径上同样生效', () => {
             name: '合法甲',
             pageUrl: 'https://example.com/a',
             zoneConfigs: [['国服', '赛季']],
-            currencyList: ['神圣石'],
+            currencyList: [{ name: '神圣石', detail: false }],
         };
         const goodWithJunkFields = {
             name: '合法乙',
             pageUrl: 'https://example.com/d',
-            zoneConfigs: [['赛季', '普通'], '不是数组', ['赛季', 123]],
+            zoneConfigs: [
+                ['赛季', '普通'],
+                '不是数组',
+                ['赛季', 123],
+            ],
             currencyList: '不是数组',
         };
 
@@ -325,9 +399,15 @@ describe('GET /sessions — 群管理页读的是真实订阅关系, 不是死 U
         const { body } = await env.callRoute('GET /sessions');
 
         const sessions = {
-            'group:555': { notifyEnabled: true, enabledGames: ['流放之路2'] },
+            'group:555': {
+                notifyEnabled: true,
+                enabledGames: ['流放之路2'],
+            },
             // 只开了通知、还没订游戏 —— 这也是一条真实状态, 不该被省略
-            'private:10002': { notifyEnabled: true, enabledGames: [] },
+            'private:10002': {
+                notifyEnabled: true,
+                enabledGames: [],
+            },
         };
 
         expect(body).toMatchObject({ code: 0, data: sessions });
@@ -362,7 +442,9 @@ describe('改完分区配置, 下一次抓取就按新配置执行（无需重�
                         name: '流放之路2',
                         pageUrl: FULL_PAGE_URL,
                         zoneConfigs: [['国服', '赛季', '普通']],
-                        currencyList: ['神圣石'],
+                        currencyList: [
+                            { name: '神圣石', detail: false },
+                        ],
                     },
                 ],
             },
@@ -388,7 +470,9 @@ describe('新增的游戏, 指令与调度器立刻就能看到', () => {
                         name: '原神',
                         pageUrl: 'https://example.com/genshin',
                         zoneConfigs: [['国服']],
-                        currencyList: ['原石'],
+                        currencyList: [
+                            { name: '原石', detail: false },
+                        ],
                     },
                 ],
             },
@@ -410,7 +494,9 @@ describe('新增的游戏, 指令与调度器立刻就能看到', () => {
                         name: '原神',
                         pageUrl: 'https://example.com/genshin',
                         zoneConfigs: [['国服']],
-                        currencyList: ['原石'],
+                        currencyList: [
+                            { name: '原石', detail: false },
+                        ],
                     },
                 ],
             },

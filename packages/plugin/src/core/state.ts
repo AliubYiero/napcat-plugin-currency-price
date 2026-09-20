@@ -12,9 +12,21 @@
 
 import fs from 'fs';
 import path from 'path';
-import type { NapCatPluginContext, PluginLogger } from 'napcat-types/napcat-onebot/network/plugin/types';
-import { DEFAULT_CONFIG, MIN_PUSH_INTERVAL_MS, VALID_PUSH_HOURS } from '../config';
-import type { CatalogConfig, PluginConfig, GroupConfig } from '../types';
+import type {
+    NapCatPluginContext,
+    PluginLogger,
+} from 'napcat-types/napcat-onebot/network/plugin/types';
+import {
+    DEFAULT_CONFIG,
+    MIN_PUSH_INTERVAL_MS,
+    VALID_PUSH_HOURS,
+} from '../config';
+import type {
+    CatalogConfig,
+    CurrencyConfig,
+    PluginConfig,
+    GroupConfig,
+} from '../types';
 
 // ==================== 配置清洗工具 ====================
 
@@ -28,6 +40,34 @@ function isNonEmptyString(v: unknown): v is string {
 }
 
 /**
+ * 清洗通货清单。
+ *
+ * ⚠️ **兼容旧形态**: 早期配置里 `currencyList` 是 `string[]`（通货名的扁平数组）。形态换成
+ * `{ name, detail }[]` 之后, 旧配置必须**静默升级**而不是整条丢弃——清洗的规则是"能救则救",
+ * 丢掉用户手填了一长串的清单只在救不回来时才做。
+ *
+ * ⚠️ 升级出来的 `detail` 一律 `false`（详情开关的默认值）。这是刻意的: 用户从没开过详情,
+ * 不该因为我们改了数据结构就替他打开一个会显著拖长抓取、并把价格判成失真的开关。
+ *
+ * @param raw 外部输入。两条支路: 字符串（v1 形态）/ 对象（v2 起）
+ */
+function sanitizeCurrencyList(raw: unknown): CurrencyConfig[] {
+    if (!Array.isArray(raw)) return [];
+
+    return raw.flatMap((item): CurrencyConfig[] => {
+        if (isNonEmptyString(item))
+            return [{ name: item.trim(), detail: false }];
+        if (!isObject(item) || !isNonEmptyString(item.name))
+            return [];
+
+        // 缺失 / 非布尔都是 `false`: 默认关闭是领域决策, 不用真值判断兜底
+        return [
+            { name: item.name.trim(), detail: item.detail === true },
+        ];
+    });
+}
+
+/**
  * 清洗单条 catalog。
  *
  * `name` 与 `pageUrl` 是"去哪抓"的**定位信息**, 缺任何一个这条配置都无法成立 →
@@ -37,19 +77,19 @@ function isNonEmptyString(v: unknown): v is string {
  */
 function sanitizeCatalog(raw: unknown): CatalogConfig | null {
     if (!isObject(raw)) return null;
-    if (!isNonEmptyString(raw.name) || !isNonEmptyString(raw.pageUrl)) return null;
+    if (!isNonEmptyString(raw.name) || !isNonEmptyString(raw.pageUrl))
+        return null;
 
     return {
         name: raw.name,
         pageUrl: raw.pageUrl,
-        currencyList: Array.isArray(raw.currencyList)
-            ? raw.currencyList.filter(isNonEmptyString)
-            : [],
+        currencyList: sanitizeCurrencyList(raw.currencyList),
         // 区服组合的行必须**整体是字符串**: 少一级的组合会静默指向另一个区服
         zoneConfigs: Array.isArray(raw.zoneConfigs)
             ? raw.zoneConfigs.filter(
                   (row): row is string[] =>
-                      Array.isArray(row) && row.every(isNonEmptyString),
+                      Array.isArray(row) &&
+                      row.every(isNonEmptyString),
               )
             : [],
     };
@@ -63,7 +103,8 @@ function sanitizeCatalog(raw: unknown): CatalogConfig | null {
  * 规则按字段形态分五类, 见 docs/config-pattern.md 的"清洗规则分类表"。
  */
 export function sanitizeConfig(raw: unknown): PluginConfig {
-    if (!isObject(raw)) return { ...DEFAULT_CONFIG, groupConfigs: {} };
+    if (!isObject(raw))
+        return { ...DEFAULT_CONFIG, groupConfigs: {} };
 
     const out: PluginConfig = { ...DEFAULT_CONFIG, groupConfigs: {} };
 
@@ -91,10 +132,13 @@ export function sanitizeConfig(raw: unknown): PluginConfig {
 
     // 群配置清洗
     if (isObject(raw.groupConfigs)) {
-        for (const [groupId, groupConfig] of Object.entries(raw.groupConfigs)) {
+        for (const [groupId, groupConfig] of Object.entries(
+            raw.groupConfigs,
+        )) {
             if (isObject(groupConfig)) {
                 const cfg: GroupConfig = {};
-                if (typeof groupConfig.enabled === 'boolean') cfg.enabled = groupConfig.enabled;
+                if (typeof groupConfig.enabled === 'boolean')
+                    cfg.enabled = groupConfig.enabled;
                 // TODO: 在这里添加你的群配置项清洗
                 out.groupConfigs[groupId] = cfg;
             }
@@ -117,7 +161,8 @@ export function sanitizeConfig(raw: unknown): PluginConfig {
     if (Array.isArray(raw.pushHours)) {
         const valid = new Set(VALID_PUSH_HOURS);
         out.pushHours = raw.pushHours.filter(
-            (hour): hour is number => typeof hour === 'number' && valid.has(hour),
+            (hour): hour is number =>
+                typeof hour === 'number' && valid.has(hour),
         );
     }
 
@@ -125,7 +170,10 @@ export function sanitizeConfig(raw: unknown): PluginConfig {
     if (Array.isArray(raw.catalogs)) {
         out.catalogs = raw.catalogs
             .map(sanitizeCatalog)
-            .filter((catalog): catalog is CatalogConfig => catalog !== null);
+            .filter(
+                (catalog): catalog is CatalogConfig =>
+                    catalog !== null,
+            );
     }
 
     return out;
@@ -158,7 +206,10 @@ class PluginState {
 
     /** 获取上下文（确保已初始化） */
     get ctx(): NapCatPluginContext {
-        if (!this._ctx) throw new Error('PluginState 尚未初始化，请先调用 init()');
+        if (!this._ctx)
+            throw new Error(
+                'PluginState 尚未初始化，请先调用 init()',
+            );
         return this._ctx;
     }
 
@@ -185,15 +236,20 @@ class PluginState {
      */
     private async fetchSelfId(): Promise<void> {
         try {
-            const res = await this.ctx.actions.call(
-                'get_login_info', {}, this.ctx.adapterName, this.ctx.pluginManager.config
-            ) as { user_id?: number | string };
+            const res = (await this.ctx.actions.call(
+                'get_login_info',
+                {},
+                this.ctx.adapterName,
+                this.ctx.pluginManager.config,
+            )) as { user_id?: number | string };
             if (res?.user_id) {
                 this.selfId = String(res.user_id);
-                this.logger.debug("(｡·ω·｡) 机器人 QQ: " + this.selfId);
+                this.logger.debug(
+                    '(｡·ω·｡) 机器人 QQ: ' + this.selfId,
+                );
             }
         } catch (e) {
-            this.logger.warn("(；′⌒`) 获取机器人 QQ 号失败:", e);
+            this.logger.warn('(；′⌒`) 获取机器人 QQ 号失败:', e);
         }
     }
 
@@ -241,7 +297,10 @@ class PluginState {
                 return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
             }
         } catch (e) {
-            this.logger.warn("(；′⌒`) 读取数据文件 " + filename + " 失败:", e);
+            this.logger.warn(
+                '(；′⌒`) 读取数据文件 ' + filename + ' 失败:',
+                e,
+            );
         }
         return defaultValue;
     }
@@ -252,12 +311,23 @@ class PluginState {
      * @param data 要保存的数据
      * @param space 保存文件的空白符
      */
-    saveDataFile<T>( filename: string, data: T, space: number = 0): void {
+    saveDataFile<T>(
+        filename: string,
+        data: T,
+        space: number = 0,
+    ): void {
         const filePath = this.getDataFilePath(filename);
         try {
-            fs.writeFileSync(filePath, JSON.stringify(data, null, space), 'utf-8');
+            fs.writeFileSync(
+                filePath,
+                JSON.stringify(data, null, space),
+                'utf-8',
+            );
         } catch (e) {
-            this.logger.error("(╥﹏╥) 保存数据文件 " + filename + " 失败:", e);
+            this.logger.error(
+                '(╥﹏╥) 保存数据文件 ' + filename + ' 失败:',
+                e,
+            );
         }
     }
 
@@ -270,7 +340,9 @@ class PluginState {
         const configPath = this.ctx.configPath;
         try {
             if (configPath && fs.existsSync(configPath)) {
-                const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+                const raw = JSON.parse(
+                    fs.readFileSync(configPath, 'utf-8'),
+                );
                 this.config = sanitizeConfig(raw);
                 // 加载统计信息
                 if (isObject(raw) && isObject(raw.stats)) {
@@ -280,10 +352,15 @@ class PluginState {
             } else {
                 this.config = { ...DEFAULT_CONFIG, groupConfigs: {} };
                 this.saveConfig();
-                this.ctx.logger.debug('配置文件不存在，已创建默认配置');
+                this.ctx.logger.debug(
+                    '配置文件不存在，已创建默认配置',
+                );
             }
         } catch (error) {
-            this.ctx.logger.error('加载配置失败，使用默认配置:', error);
+            this.ctx.logger.error(
+                '加载配置失败，使用默认配置:',
+                error,
+            );
             this.config = { ...DEFAULT_CONFIG, groupConfigs: {} };
         }
     }
@@ -300,7 +377,11 @@ class PluginState {
                 fs.mkdirSync(configDir, { recursive: true });
             }
             const data = { ...this.config, stats: this.stats };
-            fs.writeFileSync(configPath, JSON.stringify(data, null, 2), 'utf-8');
+            fs.writeFileSync(
+                configPath,
+                JSON.stringify(data, null, 2),
+                'utf-8',
+            );
         } catch (error) {
             this._ctx.logger.error('保存配置失败:', error);
         }
@@ -325,7 +406,10 @@ class PluginState {
     /**
      * 更新指定群的配置
      */
-    updateGroupConfig(groupId: string, config: Partial<GroupConfig>): void {
+    updateGroupConfig(
+        groupId: string,
+        config: Partial<GroupConfig>,
+    ): void {
         this.config.groupConfigs[groupId] = {
             ...this.config.groupConfigs[groupId],
             ...config,

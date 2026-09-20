@@ -3,11 +3,17 @@
  * 定义默认配置值和 WebUI 配置 Schema
  */
 
-import type { NapCatPluginContext, PluginConfigSchema } from 'napcat-types/napcat-onebot/network/plugin/types';
+import type {
+    NapCatPluginContext,
+    PluginConfigSchema,
+} from 'napcat-types/napcat-onebot/network/plugin/types';
 import type { CatalogConfig, PluginConfig } from './types';
 
 /** 定时推送小时集合的取值范围 (本地时间, 整点) */
-export const VALID_PUSH_HOURS: number[] = Array.from({ length: 24 }, (_, hour) => hour);
+export const VALID_PUSH_HOURS: number[] = Array.from(
+    { length: 24 },
+    (_, hour) => hour,
+);
 
 /**
  * 默认 catalog 清单 (三分区, 合计 10 个区服组合)。
@@ -28,9 +34,9 @@ export const CATALOGS: CatalogConfig[] = [
             ['国服', '赛季', '普通'],
             ['国际服', '赛季', '普通'],
         ],
-        currencyList: [
-            '神圣石'
-        ],
+        // 详情（成交量 + 挂单）**逐通货开、默认关闭**: 每个开了详情的通货都要多花一次
+        // 点击与一次面板等待。默认形态是"有价格、没有盘口", 那已经是一个能用的答案
+        currencyList: [{ name: '神圣石', detail: false }],
     },
     {
         name: '流放之路1',
@@ -43,7 +49,7 @@ export const CATALOGS: CatalogConfig[] = [
         ],
         // 该分区没有「流放2金币」系列，也没有「悉妮蔻拉的发丝」（只有名称相近的「辛格拉的发辫」），
         // 因此清单与流放之路2 不通用，照抄会静默产出 0
-        currencyList: ['神圣石'],
+        currencyList: [{ name: '神圣石', detail: false }],
     },
     {
         name: '火炬之光',
@@ -55,7 +61,7 @@ export const CATALOGS: CatalogConfig[] = [
             ['赛季', '专家'],
         ],
         // 整个专区只有这一个通货
-        currencyList: ['初火源质'],
+        currencyList: [{ name: '初火源质', detail: false }],
     },
 ];
 
@@ -97,7 +103,9 @@ export const MIN_PUSH_INTERVAL_MS = 0;
  *   - plainText(content) → 纯文本说明
  *   - combine(...items)  → 组合多个配置项为 Schema
  */
-export function buildConfigSchema(ctx: NapCatPluginContext): PluginConfigSchema {
+export function buildConfigSchema(
+    ctx: NapCatPluginContext,
+): PluginConfigSchema {
     return ctx.NapCatConfig.combine(
         // 插件信息头部
         ctx.NapCatConfig.html(`
@@ -106,7 +114,12 @@ export function buildConfigSchema(ctx: NapCatPluginContext): PluginConfigSchema 
                 <p style="margin: 0; font-size: 13px; opacity: 0.85;">定时抓取千岛各游戏的通货价格并推送到群聊 / 私聊</p>
             </div>
         `),
-        ctx.NapCatConfig.boolean('enabled', '启用插件', true, '关闭后不响应任何指令，也不做定时推送'),
+        ctx.NapCatConfig.boolean(
+            'enabled',
+            '启用插件',
+            true,
+            '关闭后不响应任何指令，也不做定时推送',
+        ),
         // ⚠️ `commandPrefix` 刻意**不在此生成控件**: 它是开发期常量, 不是用户配置项——
         // 前缀被烧进帮助图片 (`pnpm help:generate` 的产物), 运行期能改就意味着图上的
         // 指令与实际生效的指令可能对不上。改它 = 改 `DEFAULT_CONFIG` + 重跑生成。
@@ -149,6 +162,8 @@ export function buildConfigSchema(ctx: NapCatPluginContext): PluginConfigSchema 
         // boolean/text/number/select/multiSelect/html/combine, **没有数组或表格控件**, 表达不出来。
         // 它仍走完整四环节(类型/默认值/清洗/运行时读写), 只是编辑入口换成自定义 WebUI 页面。
         // 见设计文档 §5.2。
-        ctx.NapCatConfig.plainText('游戏分区配置请在插件页面的「分区配置」页中编辑。'),
+        ctx.NapCatConfig.plainText(
+            '游戏分区配置请在插件页面的「分区配置」页中编辑。',
+        ),
     );
 }

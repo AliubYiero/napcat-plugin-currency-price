@@ -5,12 +5,23 @@
  * 「本轮哪些游戏失败了」和 `data.json` 里的数据。
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+    afterEach,
+    beforeEach,
+    describe,
+    expect,
+    it,
+    vi,
+} from 'vitest';
 import { DEFAULT_CONFIG } from '../../src/config';
 import { pluginState } from '../../src/core/state';
 import { pushToSubscribers } from '../../src/services/notifier';
 import { SessionStore } from '../../src/store/session.store';
-import { createTestEnv, seedGameResult, type TestEnv } from '../helpers/test-env';
+import {
+    createTestEnv,
+    seedGameResult,
+    type TestEnv,
+} from '../helpers/test-env';
 
 let env: TestEnv;
 
@@ -29,7 +40,7 @@ beforeEach(() => {
         catalogs: [GAME_A, GAME_B].map((name) => ({
             name,
             pageUrl: `https://qiandao.com/${name}`,
-            currencyList: ['神圣石'],
+            currencyList: [{ name: '神圣石', detail: false }],
             zoneConfigs: [['国服']],
         })),
     };
@@ -41,7 +52,10 @@ afterEach(() => {
 });
 
 /** 往 `data.json` 里塞一份成功数据（= 一次成功抓取留下的东西） */
-function seed(gameName: string, readAt = '2026-09-16T08:00:05.123Z'): void {
+function seed(
+    gameName: string,
+    readAt = '2026-09-16T08:00:05.123Z',
+): void {
     seedGameResult(gameName, {
         readAt,
         missing: [],
@@ -49,7 +63,9 @@ function seed(gameName: string, readAt = '2026-09-16T08:00:05.123Z'): void {
             {
                 zone: ['国服'],
                 readAt,
-                prices: [{ name: '神圣石', price: 0.2444, unit: '元/个' }],
+                prices: [
+                    { name: '神圣石', price: 0.2444, unit: '元/个' },
+                ],
             },
         ],
     });
@@ -64,7 +80,9 @@ function subscribe(sessionKey: string, games: string[]): void {
 
 /** 每条消息的头部（第一行） */
 function headers(): string[] {
-    return env.sentMessages.map((sent) => sent.message.split('\n')[0]);
+    return env.sentMessages.map(
+        (sent) => sent.message.split('\n')[0],
+    );
 }
 
 describe('pushToSubscribers — 推送范围与顺序', () => {
@@ -138,8 +156,12 @@ describe('pushToSubscribers — 推给谁', () => {
 
         expect(env.sentMessages).toHaveLength(2);
 
-        const toGroup = env.sentMessages.find((sent) => sent.messageType === 'group');
-        const toPrivate = env.sentMessages.find((sent) => sent.messageType === 'private');
+        const toGroup = env.sentMessages.find(
+            (sent) => sent.messageType === 'group',
+        );
+        const toPrivate = env.sentMessages.find(
+            (sent) => sent.messageType === 'private',
+        );
 
         expect(toGroup?.target).toBe('555');
         expect(toGroup?.message).toContain(`「${GAME_A}」`);
@@ -168,7 +190,10 @@ describe('pushToSubscribers — 没有可推的内容时静默', () => {
 
 describe('pushToSubscribers — 串行与间隔', () => {
     it('**串行推送, 每条之间间隔 `pushIntervalMs`**', async () => {
-        pluginState.config = { ...pluginState.config, pushIntervalMs: 200 };
+        pluginState.config = {
+            ...pluginState.config,
+            pushIntervalMs: 200,
+        };
         subscribe('group:555', [GAME_A, GAME_B, GAME_C]);
         for (const game of [GAME_A, GAME_B, GAME_C]) seed(game);
 
@@ -179,7 +204,8 @@ describe('pushToSubscribers — 串行与间隔', () => {
         expect(env.sentMessages).toHaveLength(3);
         // 间隔加在**相邻两条之间**: 三条消息共两次等待; 最后一条之后不再空等
         const gap = (index: number): number =>
-            env.sentMessages[index].sentAt - env.sentMessages[index - 1].sentAt;
+            env.sentMessages[index].sentAt -
+            env.sentMessages[index - 1].sentAt;
 
         expect(gap(1)).toBe(200);
         expect(gap(2)).toBe(200);

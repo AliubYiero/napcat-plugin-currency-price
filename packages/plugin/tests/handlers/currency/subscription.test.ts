@@ -29,7 +29,7 @@ beforeEach(() => {
         catalogs: CATALOG_NAMES.map((name) => ({
             name,
             pageUrl: `https://qiandao.com/${name}`,
-            currencyList: ['神圣石'],
+            currencyList: [{ name: '神圣石', detail: false }],
             zoneConfigs: [['国服', '赛季', '普通']],
         })),
     };
@@ -40,7 +40,9 @@ afterEach(() => {
 });
 
 /** 发一条消息, 返回机器人回的**最后一条**消息文本 */
-async function send(event: Parameters<typeof handleMessage>[1]): Promise<string> {
+async function send(
+    event: Parameters<typeof handleMessage>[1],
+): Promise<string> {
     env.clearSent();
     await handleMessage(env.ctx, event);
 
@@ -55,28 +57,45 @@ describe('notify — 查看与开关', () => {
     });
 
     it('群管理员 `notify on` 后回显已开启, 且再查看仍是已开启', async () => {
-        expect(await send(groupMessage('#currency notify on', { role: 'admin' }))).toBe(
+        expect(
+            await send(
+                groupMessage('#currency notify on', {
+                    role: 'admin',
+                }),
+            ),
+        ).toBe('本群通知：已开启');
+
+        expect(await send(groupMessage('#currency notify'))).toBe(
             '本群通知：已开启',
         );
-
-        expect(await send(groupMessage('#currency notify'))).toBe('本群通知：已开启');
     });
 
     it('`notify off` 关回去', async () => {
-        await send(groupMessage('#currency notify on', { role: 'admin' }));
-
-        expect(await send(groupMessage('#currency notify off', { role: 'admin' }))).toBe(
-            '本群通知：已关闭',
+        await send(
+            groupMessage('#currency notify on', { role: 'admin' }),
         );
+
+        expect(
+            await send(
+                groupMessage('#currency notify off', {
+                    role: 'admin',
+                }),
+            ),
+        ).toBe('本群通知：已关闭');
     });
 
     it('开关落盘: 重载插件后仍是已开启', async () => {
-        await send(groupMessage('#currency notify on', { role: 'admin' }));
+        await send(
+            groupMessage('#currency notify on', { role: 'admin' }),
+        );
 
         const reloaded = createTestEnv(env.root);
         reloaded.init();
         env.clearSent();
-        await handleMessage(reloaded.ctx, groupMessage('#currency notify'));
+        await handleMessage(
+            reloaded.ctx,
+            groupMessage('#currency notify'),
+        );
         expect(reloaded.sent.at(-1)).toBe('本群通知：已开启');
         reloaded.dispose();
     });
@@ -88,80 +107,136 @@ describe('notify — 查看与开关', () => {
         expect(reply).toContain('#currency');
         // 订阅关系一个字节都没落盘——被挡下的指令不该在磁盘上留痕
         expect(readStateFile(env)).toBeNull();
-        expect(await send(groupMessage('#currency notify'))).toBe('本群通知：已关闭');
+        expect(await send(groupMessage('#currency notify'))).toBe(
+            '本群通知：已关闭',
+        );
     });
 
     it('好友私聊是 privateUser: 说"本会话通知"而不是"本群通知"', async () => {
-        expect(await send(privateMessage('#currency notify on'))).toBe('本会话通知：已开启');
+        expect(
+            await send(privateMessage('#currency notify on')),
+        ).toBe('本会话通知：已开启');
     });
 
     it('**群的开关不影响私聊, 私聊的也不影响群**', async () => {
-        await send(groupMessage('#currency notify on', { groupId: '555', role: 'admin' }));
+        await send(
+            groupMessage('#currency notify on', {
+                groupId: '555',
+                role: 'admin',
+            }),
+        );
 
-        expect(await send(privateMessage('#currency notify', { userId: '789' }))).toBe(
-            '本会话通知：已关闭',
-        );
-        expect(await send(groupMessage('#currency notify', { groupId: '999' }))).toBe(
-            '本群通知：已关闭',
-        );
+        expect(
+            await send(
+                privateMessage('#currency notify', { userId: '789' }),
+            ),
+        ).toBe('本会话通知：已关闭');
+        expect(
+            await send(
+                groupMessage('#currency notify', { groupId: '999' }),
+            ),
+        ).toBe('本群通知：已关闭');
     });
 });
 
 describe('game — 列出、订阅与退订', () => {
     it('`game` 列出配置中的全部游戏, 一个都没订时不标任何标记', async () => {
         expect(await send(groupMessage('#currency game'))).toBe(
-            ['#currency 可订阅的游戏', '- 流放之路2', '- 流放之路1', '- 火炬之光'].join('\n'),
+            [
+                '#currency 可订阅的游戏',
+                '- 流放之路2',
+                '- 流放之路1',
+                '- 火炬之光',
+            ].join('\n'),
         );
     });
 
     it('`game add 流放之路2` 后再列出, 该游戏被标为已订阅', async () => {
-        expect(await send(groupMessage('#currency game add 流放之路2', { role: 'admin' }))).toBe(
-            '已订阅：流放之路2',
-        );
+        expect(
+            await send(
+                groupMessage('#currency game add 流放之路2', {
+                    role: 'admin',
+                }),
+            ),
+        ).toBe('已订阅：流放之路2');
 
         expect(await send(groupMessage('#currency game'))).toBe(
-            ['#currency 可订阅的游戏', '- 流放之路2（已订阅）', '- 流放之路1', '- 火炬之光'].join(
-                '\n',
-            ),
+            [
+                '#currency 可订阅的游戏',
+                '- 流放之路2（已订阅）',
+                '- 流放之路1',
+                '- 火炬之光',
+            ].join('\n'),
         );
     });
 
     it('订阅落盘: 重载插件后仍然订着', async () => {
-        await send(groupMessage('#currency game add 流放之路2', { role: 'admin' }));
+        await send(
+            groupMessage('#currency game add 流放之路2', {
+                role: 'admin',
+            }),
+        );
 
         const reloaded = createTestEnv(env.root);
         reloaded.init();
         reloaded.clearSent();
-        await handleMessage(reloaded.ctx, groupMessage('#currency game'));
-        expect(reloaded.sent.at(-1)).toContain('- 流放之路2（已订阅）');
+        await handleMessage(
+            reloaded.ctx,
+            groupMessage('#currency game'),
+        );
+        expect(reloaded.sent.at(-1)).toContain(
+            '- 流放之路2（已订阅）',
+        );
         reloaded.dispose();
     });
 
     it('`game remove 火炬之光` 退订一个**没订过**的游戏: 如实说未订阅, 不报错', async () => {
-        const reply = await send(groupMessage('#currency game remove 火炬之光', { role: 'admin' }));
+        const reply = await send(
+            groupMessage('#currency game remove 火炬之光', {
+                role: 'admin',
+            }),
+        );
 
         expect(reply).toBe('未订阅：火炬之光');
-        expect(await send(groupMessage('#currency game'))).not.toContain('已订阅）');
+        expect(
+            await send(groupMessage('#currency game')),
+        ).not.toContain('已订阅）');
     });
 
     it('退订已订阅的游戏', async () => {
-        await send(groupMessage('#currency game add 火炬之光', { role: 'admin' }));
-
-        expect(await send(groupMessage('#currency game remove 火炬之光', { role: 'admin' }))).toBe(
-            '已取消订阅：火炬之光',
+        await send(
+            groupMessage('#currency game add 火炬之光', {
+                role: 'admin',
+            }),
         );
-        expect(await send(groupMessage('#currency game'))).not.toContain('已订阅）');
+
+        expect(
+            await send(
+                groupMessage('#currency game remove 火炬之光', {
+                    role: 'admin',
+                }),
+            ),
+        ).toBe('已取消订阅：火炬之光');
+        expect(
+            await send(groupMessage('#currency game')),
+        ).not.toContain('已订阅）');
     });
 
     it('**非法参数**: `game add 原神` 回非法参数文案, 且没有订阅任何东西', async () => {
-        const reply = await send(groupMessage('#currency game add 原神', { role: 'admin' }));
+        const reply = await send(
+            groupMessage('#currency game add 原神', {
+                role: 'admin',
+            }),
+        );
 
         expect(reply).toContain('非法参数 原神');
         expect(readStateFile(env)).toBeNull();
     });
 
     it('**权限不足**: 群普通成员 `game add` 订不了, 磁盘上不留痕迹', async () => {
-        const reply = await send(groupMessage('#currency game add 流放之路2'));
+        const reply = await send(
+            groupMessage('#currency game add 流放之路2'),
+        );
 
         expect(reply).toContain('权限不足');
         expect(readStateFile(env)).toBeNull();
@@ -169,7 +244,12 @@ describe('game — 列出、订阅与退订', () => {
 
     it('`game add` 可空格分隔多个游戏名: 一条指令订三个', async () => {
         expect(
-            await send(groupMessage(`#currency game add ${CATALOG_NAMES.join(' ')}`, { role: 'admin' })),
+            await send(
+                groupMessage(
+                    `#currency game add ${CATALOG_NAMES.join(' ')}`,
+                    { role: 'admin' },
+                ),
+            ),
         ).toBe(`已订阅：${CATALOG_NAMES.join('、')}`);
 
         expect(await send(groupMessage('#currency game'))).toBe(
@@ -182,35 +262,56 @@ describe('game — 列出、订阅与退订', () => {
 
     it('**多游戏同一个都不能错**: 混入非法名时整条拒绝, 合法的也不订', async () => {
         const reply = await send(
-            groupMessage('#currency game add 流放之路1 原神 火炬之光', { role: 'admin' }),
+            groupMessage(
+                '#currency game add 流放之路1 原神 火炬之光',
+                { role: 'admin' },
+            ),
         );
 
         expect(reply).toContain('非法参数 原神');
         // 整条拒绝——不能出现"订上了两个、报了一个"的中间态
         expect(readStateFile(env)).toBeNull();
-        expect(await send(groupMessage('#currency game'))).not.toContain('已订阅）');
+        expect(
+            await send(groupMessage('#currency game')),
+        ).not.toContain('已订阅）');
     });
 
     it('同一条指令里重复同一个游戏名: 回执去重, 不订出两份', async () => {
         const reply = await send(
-            groupMessage('#currency game add 火炬之光 火炬之光', { role: 'admin' }),
+            groupMessage('#currency game add 火炬之光 火炬之光', {
+                role: 'admin',
+            }),
         );
 
         expect(reply).toBe('已订阅：火炬之光');
-        expect(await send(groupMessage('#currency game'))).toContain('- 火炬之光（已订阅）');
-    });
-
-    it('**缺参数**: `game add` 后面什么都没跟时回非法参数, 不是静默成功', async () => {
-        expect(await send(groupMessage('#currency game add', { role: 'admin' }))).toContain(
-            '非法参数',
+        expect(await send(groupMessage('#currency game'))).toContain(
+            '- 火炬之光（已订阅）',
         );
     });
 
+    it('**缺参数**: `game add` 后面什么都没跟时回非法参数, 不是静默成功', async () => {
+        expect(
+            await send(
+                groupMessage('#currency game add', { role: 'admin' }),
+            ),
+        ).toContain('非法参数');
+    });
+
     it('`game remove` 同样可一次退订多个', async () => {
-        await send(groupMessage('#currency game add 流放之路1 流放之路2 火炬之光', { role: 'admin' }));
+        await send(
+            groupMessage(
+                '#currency game add 流放之路1 流放之路2 火炬之光',
+                { role: 'admin' },
+            ),
+        );
 
         expect(
-            await send(groupMessage('#currency game remove 流放之路1 火炬之光', { role: 'admin' })),
+            await send(
+                groupMessage(
+                    '#currency game remove 流放之路1 火炬之光',
+                    { role: 'admin' },
+                ),
+            ),
         ).toBe('已取消订阅：流放之路1、火炬之光');
         expect(await send(groupMessage('#currency game'))).toBe(
             [
@@ -223,31 +324,59 @@ describe('game — 列出、订阅与退订', () => {
     });
 
     it('多退订时**分组如实报**: 退掉的与没订过的分两行, 不合并成一句谎话', async () => {
-        await send(groupMessage('#currency game add 流放之路2', { role: 'admin' }));
+        await send(
+            groupMessage('#currency game add 流放之路2', {
+                role: 'admin',
+            }),
+        );
 
         expect(
-            await send(groupMessage('#currency game remove 流放之路2 火炬之光', { role: 'admin' })),
+            await send(
+                groupMessage(
+                    '#currency game remove 流放之路2 火炬之光',
+                    { role: 'admin' },
+                ),
+            ),
         ).toBe('已取消订阅：流放之路2\n未订阅：火炬之光');
     });
 
     it('**缺参数**: `game remove` 后面什么都没跟时回非法参数 (曾经会回"未订阅：undefined")', async () => {
-        expect(await send(groupMessage('#currency game remove', { role: 'admin' }))).toContain(
-            '非法参数',
-        );
+        expect(
+            await send(
+                groupMessage('#currency game remove', {
+                    role: 'admin',
+                }),
+            ),
+        ).toContain('非法参数');
     });
 
     it('**订阅互相独立**: 群里订的不进私聊, 别的群也看不到', async () => {
-        await send(groupMessage('#currency game add 流放之路2', { groupId: '555', role: 'admin' }));
-        await send(privateMessage('#currency game add 火炬之光', { userId: '789' }));
+        await send(
+            groupMessage('#currency game add 流放之路2', {
+                groupId: '555',
+                role: 'admin',
+            }),
+        );
+        await send(
+            privateMessage('#currency game add 火炬之光', {
+                userId: '789',
+            }),
+        );
 
-        expect(await send(groupMessage('#currency game', { groupId: '555' }))).toContain(
-            '- 流放之路2（已订阅）',
-        );
-        expect(await send(privateMessage('#currency game', { userId: '789' }))).toContain(
-            '- 火炬之光（已订阅）',
-        );
-        expect(await send(groupMessage('#currency game', { groupId: '999' }))).not.toContain(
-            '已订阅）',
-        );
+        expect(
+            await send(
+                groupMessage('#currency game', { groupId: '555' }),
+            ),
+        ).toContain('- 流放之路2（已订阅）');
+        expect(
+            await send(
+                privateMessage('#currency game', { userId: '789' }),
+            ),
+        ).toContain('- 火炬之光（已订阅）');
+        expect(
+            await send(
+                groupMessage('#currency game', { groupId: '999' }),
+            ),
+        ).not.toContain('已订阅）');
     });
 });

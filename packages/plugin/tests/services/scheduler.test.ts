@@ -5,17 +5,35 @@
  * 定时器用 vi.useFakeTimers 挂住, 不真等整点; 抓取经 deps 注入假件。
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+    afterEach,
+    beforeEach,
+    describe,
+    expect,
+    it,
+    vi,
+} from 'vitest';
 import { DEFAULT_CONFIG } from '../../src/config';
 import { pluginState } from '../../src/core/state';
-import { rearmScheduler, schedulerTick, SCHEDULER_TIMER_ID } from '../../src/services/scheduler';
+import {
+    rearmScheduler,
+    schedulerTick,
+    SCHEDULER_TIMER_ID,
+} from '../../src/services/scheduler';
 import type { SchedulerDeps } from '../../src/services/scheduler';
 import { SessionStore } from '../../src/store/session.store';
-import { detectBrowserLightweight, invalidateBrowserStatus } from '../../src/services/browser/status';
+import {
+    detectBrowserLightweight,
+    invalidateBrowserStatus,
+} from '../../src/services/browser/status';
 import type { DetectOptions } from '../../src/services/browser/launcher';
 import type { CatalogConfig } from '../../src/types';
 import { formatLocalTime } from '../../src/utils/time';
-import { createTestEnv, seedGameResult, type TestEnv } from '../helpers/test-env';
+import {
+    createTestEnv,
+    seedGameResult,
+    type TestEnv,
+} from '../helpers/test-env';
 
 let env: TestEnv;
 
@@ -25,7 +43,10 @@ const WITH_CHROME: DetectOptions = {
     homeDir: '/home/napcat',
     isFile: (path) => path === '/usr/bin/chromium',
 };
-const WITHOUT_CHROME: DetectOptions = { ...WITH_CHROME, isFile: () => false };
+const WITHOUT_CHROME: DetectOptions = {
+    ...WITH_CHROME,
+    isFile: () => false,
+};
 
 /** 固定"现在" = 本地 08:30, 避免测试结果随墙钟漂移 */
 function fixedNow(): number {
@@ -38,11 +59,10 @@ function fixedNow(): number {
 /** 本地日期 → 归档文件名 `YYYY-MM-DD.json` */
 function archiveNameOf(ms: number): string {
     const date = new Date(ms);
-    const pad = (value: number): string => String(value).padStart(2, '0');
+    const pad = (value: number): string =>
+        String(value).padStart(2, '0');
 
-    return (
-        `archive/${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}.json`
-    );
+    return `archive/${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}.json`;
 }
 
 /** 计数假抓取器, 记录每轮被点名的游戏 */
@@ -75,7 +95,7 @@ beforeEach(() => {
         catalogs: ['流放之路2', '火炬之光'].map((name) => ({
             name,
             pageUrl: `https://qiandao.com/${name}`,
-            currencyList: ['神圣石'],
+            currencyList: [{ name: '神圣石', detail: false }],
             zoneConfigs: [['国服']],
         })),
     };
@@ -83,7 +103,8 @@ beforeEach(() => {
 
 afterEach(() => {
     // 挂着的 setTimeout 不留到下一个用例（也不阻塞进程退出）
-    for (const timer of pluginState.timers.values()) clearTimeout(timer);
+    for (const timer of pluginState.timers.values())
+        clearTimeout(timer);
     pluginState.timers.clear();
     vi.useRealTimers();
     env.dispose();
@@ -109,7 +130,9 @@ function okResult(readAt: string) {
             {
                 zone: ['国服'],
                 readAt,
-                prices: [{ name: '神圣石', price: 0.2444, unit: '元/个' }],
+                prices: [
+                    { name: '神圣石', price: 0.2444, unit: '元/个' },
+                ],
             },
         ],
     };
@@ -122,16 +145,23 @@ describe('rearmScheduler — 停摆条件（两个, 都是"人明确关掉了"�
 
         rearmScheduler({ now: fixedNow });
 
-        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(false);
+        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(
+            false,
+        );
     });
 
     it('插件未启用（`enabled: false`）→ 不挂定时器', () => {
-        pluginState.config = { ...pluginState.config, enabled: false };
+        pluginState.config = {
+            ...pluginState.config,
+            enabled: false,
+        };
         subscribe('流放之路2');
 
         rearmScheduler({ now: fixedNow });
 
-        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(false);
+        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(
+            false,
+        );
     });
 
     it('**订阅并集为空照挂定时器**——"还没人订阅"是暂时状态, 定时器不能先跑掉', () => {
@@ -195,15 +225,23 @@ describe('rearmScheduler — 重挂', () => {
         pluginState.config = { ...pluginState.config, pushHours: [] };
         rearmScheduler({ now: fixedNow });
 
-        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(false);
+        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(
+            false,
+        );
     });
 
     it('改 `pushHours` 后**无需重启**即按新集合触发', async () => {
         subscribe('流放之路2');
         const stub = stubScrape();
 
-        pluginState.config = { ...pluginState.config, pushHours: [10] };
-        const deps: SchedulerDeps = { now: () => Date.now(), scrape: stub.scrape };
+        pluginState.config = {
+            ...pluginState.config,
+            pushHours: [10],
+        };
+        const deps: SchedulerDeps = {
+            now: () => Date.now(),
+            scrape: stub.scrape,
+        };
         rearmScheduler(deps);
 
         // 08:30 → 10:00。中途（比如 9:00 这种**未选中**的小时）不该触发
@@ -233,7 +271,9 @@ describe('schedulerTick — 触发后的动作序列', () => {
         subscribe('流放之路2');
 
         // 预置一份 30 分钟前的旧数据 → 过期
-        const oldReadAt = new Date(fixedNow() - 30 * 60_000).toISOString();
+        const oldReadAt = new Date(
+            fixedNow() - 30 * 60_000,
+        ).toISOString();
         seedGameResult('流放之路2', okResult(oldReadAt));
 
         const newReadAt = new Date(fixedNow()).toISOString();
@@ -243,22 +283,31 @@ describe('schedulerTick — 触发后的动作序列', () => {
 
         expect(stub.calls).toEqual([['流放之路2']]);
 
-        const data = JSON.parse(env.readDataFile('data.json') ?? '{}');
+        const data = JSON.parse(
+            env.readDataFile('data.json') ?? '{}',
+        );
         expect(data.games['流放之路2'].readAt).toBe(newReadAt);
 
-        const archive = JSON.parse(env.readDataFile(archiveNameOf(fixedNow())) ?? '{}');
+        const archive = JSON.parse(
+            env.readDataFile(archiveNameOf(fixedNow())) ?? '{}',
+        );
         expect(archive.runs).toHaveLength(1);
         expect(archive.runs[0].trigger).toBe('schedule');
         expect(archive.runs[0].startedAt).toBeTruthy();
         expect(archive.runs[0].finishedAt).toBeTruthy();
-        expect(archive.runs[0].games['流放之路2'].readAt).toBe(newReadAt);
+        expect(archive.runs[0].games['流放之路2'].readAt).toBe(
+            newReadAt,
+        );
     });
 
     it('**全部游戏都新鲜时不抓取**——订阅并集里的游戏逐个判新鲜度', async () => {
         subscribe('流放之路2');
 
         // 1 分钟前抓过 → 新鲜
-        seedGameResult('流放之路2', okResult(new Date(fixedNow() - 60_000).toISOString()));
+        seedGameResult(
+            '流放之路2',
+            okResult(new Date(fixedNow() - 60_000).toISOString()),
+        );
 
         const stub = stubScrape();
         await schedulerTick({ now: fixedNow, scrape: stub.scrape });
@@ -270,7 +319,10 @@ describe('schedulerTick — 触发后的动作序列', () => {
         subscribeWithNotify('流放之路2');
 
         // 1 分钟前抓过 → 新鲜, 本轮一个都不抓
-        seedGameResult('流放之路2', okResult(new Date(fixedNow() - 60_000).toISOString()));
+        seedGameResult(
+            '流放之路2',
+            okResult(new Date(fixedNow() - 60_000).toISOString()),
+        );
 
         const stub = stubScrape();
         await schedulerTick({ now: fixedNow, scrape: stub.scrape });
@@ -286,16 +338,22 @@ describe('schedulerTick — 触发后的动作序列', () => {
         subscribeWithNotify('流放之路2');
 
         // 30 分钟前的旧数据 → 过期 → 本轮会真的抓, 且这个抓是失败的
-        const oldReadAt = new Date(fixedNow() - 30 * 60_000).toISOString();
+        const oldReadAt = new Date(
+            fixedNow() - 30 * 60_000,
+        ).toISOString();
         seedGameResult('流放之路2', okResult(oldReadAt));
 
-        const stub = stubScrape({ 流放之路2: { error: '页面打不开' } });
+        const stub = stubScrape({
+            流放之路2: { error: '页面打不开' },
+        });
         await schedulerTick({ now: fixedNow, scrape: stub.scrape });
 
         expect(env.sent).toHaveLength(1);
         expect(env.sent[0]).toContain('（数据未更新）');
         // 推的是旧值: 时间戳仍是 30 分钟前那一次
-        expect(env.sent[0]).toContain(`「流放之路2」${formatLocalTime(oldReadAt)}`);
+        expect(env.sent[0]).toContain(
+            `「流放之路2」${formatLocalTime(oldReadAt)}`,
+        );
     });
 
     it('**抓取跨过整点时, 下一次触发基于完成时刻重算**——不产生自我重叠', async () => {
@@ -305,7 +363,9 @@ describe('schedulerTick — 触发后的动作序列', () => {
         rearmScheduler({ now: fixedNow });
 
         // 抓取期间时间冲到 9:05（跨过了触发点 9:00）
-        const newReadAt = new Date(fixedNow() + 35 * 60_000).toISOString();
+        const newReadAt = new Date(
+            fixedNow() + 35 * 60_000,
+        ).toISOString();
         const stub = stubScrape({ 流放之路2: okResult(newReadAt) });
         const realScrape = stub.scrape;
         stub.scrape = (async (catalogs: CatalogConfig[]) => {
@@ -314,7 +374,10 @@ describe('schedulerTick — 触发后的动作序列', () => {
             return realScrape(catalogs);
         }) as typeof stub.scrape;
 
-        await schedulerTick({ now: () => Date.now(), scrape: stub.scrape });
+        await schedulerTick({
+            now: () => Date.now(),
+            scrape: stub.scrape,
+        });
 
         // 完成时刻 9:05 → 下一个选中整点是 21:00, **不是** 9:00 的立即再触发
         expect(vi.getTimerCount()).toBe(1);
@@ -356,14 +419,19 @@ describe('schedulerTick — 触发后的动作序列', () => {
         // 抓取期间配置被清空
         const stub = stubScrape();
         stub.scrape = (async () => {
-            pluginState.config = { ...pluginState.config, pushHours: [] };
+            pluginState.config = {
+                ...pluginState.config,
+                pushHours: [],
+            };
 
             return {} as never;
         }) as typeof stub.scrape;
 
         await schedulerTick({ now: fixedNow, scrape: stub.scrape });
 
-        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(false);
+        expect(pluginState.timers.has(SCHEDULER_TIMER_ID)).toBe(
+            false,
+        );
         expect(vi.getTimerCount()).toBe(0);
     });
 
@@ -371,7 +439,12 @@ describe('schedulerTick — 触发后的动作序列', () => {
         subscribe('流放之路2');
 
         // 30 分钟前的旧数据 → 触发时判过期, 会真的抓一把
-        seedGameResult('流放之路2', okResult(new Date(fixedNow() - 30 * 60_000).toISOString()));
+        seedGameResult(
+            '流放之路2',
+            okResult(
+                new Date(fixedNow() - 30 * 60_000).toISOString(),
+            ),
+        );
 
         // 抓取耗时 5 秒: 9:00:00 开始, 9:00:05 结束
         const stub = stubScrape();

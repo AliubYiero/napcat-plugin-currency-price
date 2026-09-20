@@ -11,4 +11,10 @@
  * ⚠️ 本文件只做类型重导出, **不得引入任何运行期依赖**——它被 WebUI 与插件后端共用,
  * 且 `config.ts` 的默认配置对象在模块加载期就会求值。
  */
-export type { PluginConfig, GroupConfig, CatalogConfig, ApiResponse } from '@napcat-plugin-template/shared';
+export type {
+    PluginConfig,
+    GroupConfig,
+    CatalogConfig,
+    CurrencyConfig,
+    ApiResponse,
+} from '@napcat-plugin-template/shared';

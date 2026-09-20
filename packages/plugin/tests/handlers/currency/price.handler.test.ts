@@ -17,7 +17,10 @@ import { pluginState } from '../../../src/core/state';
 import { handleMessage } from '../../../src/handlers/message-handler';
 import { priceHandlerDeps } from '../../../src/handlers/currency/price.handler';
 import { pushToSubscribers } from '../../../src/services/notifier';
-import { detectBrowserLightweight, invalidateBrowserStatus } from '../../../src/services/browser/status';
+import {
+    detectBrowserLightweight,
+    invalidateBrowserStatus,
+} from '../../../src/services/browser/status';
 import type { DetectOptions } from '../../../src/services/browser/launcher';
 import { SessionStore } from '../../../src/store/session.store';
 import {
@@ -38,7 +41,10 @@ const WITH_CHROME: DetectOptions = {
 };
 
 /** 一台"一个浏览器都没有"的假机器 */
-const WITHOUT_CHROME: DetectOptions = { ...WITH_CHROME, isFile: () => false };
+const WITHOUT_CHROME: DetectOptions = {
+    ...WITH_CHROME,
+    isFile: () => false,
+};
 
 const realScrape = priceHandlerDeps.scrape;
 
@@ -53,7 +59,7 @@ beforeEach(() => {
         catalogs: ['流放之路2', '火炬之光'].map((name) => ({
             name,
             pageUrl: `https://qiandao.com/${name}`,
-            currencyList: ['神圣石'],
+            currencyList: [{ name: '神圣石', detail: false }],
             zoneConfigs: [['国服']],
         })),
     };
@@ -65,7 +71,9 @@ afterEach(() => {
     env.dispose();
 });
 
-async function send(event: Parameters<typeof handleMessage>[1]): Promise<string> {
+async function send(
+    event: Parameters<typeof handleMessage>[1],
+): Promise<string> {
     env.clearSent();
     await handleMessage(env.ctx, event);
 
@@ -73,7 +81,9 @@ async function send(event: Parameters<typeof handleMessage>[1]): Promise<string>
 }
 
 /** 回执「正在获取…」会先发一条, 取最后一条即为结果 */
-async function sendAll(event: Parameters<typeof handleMessage>[1]): Promise<string[]> {
+async function sendAll(
+    event: Parameters<typeof handleMessage>[1],
+): Promise<string[]> {
     env.clearSent();
     await handleMessage(env.ctx, event);
 
@@ -84,13 +94,17 @@ describe('price — 服务不可用', () => {
     it('`catalogs` 为空 → 「服务不可用，请联系机器人管理员」', async () => {
         pluginState.config = { ...pluginState.config, catalogs: [] };
 
-        expect(await send(groupMessage('#currency price'))).toBe('服务不可用，请联系机器人管理员');
+        expect(await send(groupMessage('#currency price'))).toBe(
+            '服务不可用，请联系机器人管理员',
+        );
     });
 
     it('**浏览器不可用** → 同一句「服务不可用，请联系机器人管理员」', async () => {
         detectBrowserLightweight(WITHOUT_CHROME);
 
-        expect(await send(groupMessage('#currency price'))).toBe('服务不可用，请联系机器人管理员');
+        expect(await send(groupMessage('#currency price'))).toBe(
+            '服务不可用，请联系机器人管理员',
+        );
     });
 
     it('服务不可用时**不去抓取**——起一次注定失败的浏览器没有意义', async () => {
@@ -117,15 +131,24 @@ function okResult() {
             {
                 zone: ['国服', '赛季', '普通'],
                 readAt: '2026-09-16T08:00:05.123Z',
-                prices: [{ name: '神圣石', price: 0.2444, unit: '元/个' }],
+                prices: [
+                    { name: '神圣石', price: 0.2444, unit: '元/个' },
+                ],
             },
         ],
     };
 }
 
 /** 订阅一个游戏, 并把抓取结果固定下来 */
-async function subscribeAndStub(gameName: string, result: ReturnType<typeof okResult>): Promise<void> {
-    await send(groupMessage(`#currency game add ${gameName}`, { role: 'admin' }));
+async function subscribeAndStub(
+    gameName: string,
+    result: ReturnType<typeof okResult>,
+): Promise<void> {
+    await send(
+        groupMessage(`#currency game add ${gameName}`, {
+            role: 'admin',
+        }),
+    );
     priceHandlerDeps.scrape = async () => ({ [gameName]: result });
 }
 
@@ -133,7 +156,9 @@ describe('price — 抓取与展示', () => {
     it('**先回执「正在获取通货价格数据，请稍等...」**, 抓完再发结果（抓取要跑几十秒, 用户需要知道指令被收到了）', async () => {
         await subscribeAndStub('流放之路2', okResult());
 
-        const messages = await sendAll(groupMessage('#currency price'));
+        const messages = await sendAll(
+            groupMessage('#currency price'),
+        );
 
         expect(messages).toHaveLength(2);
         expect(messages[0]).toBe('正在获取通货价格数据，请稍等...');
@@ -155,7 +180,9 @@ describe('price — 抓取与展示', () => {
             return {};
         };
 
-        const messages = await sendAll(groupMessage('#currency price'));
+        const messages = await sendAll(
+            groupMessage('#currency price'),
+        );
 
         expect(scraped).toBe(0);
         expect(messages).toHaveLength(1);
@@ -179,7 +206,10 @@ describe('price — 抓取与展示', () => {
             ...pluginState.config,
             catalogs: pluginState.config.catalogs.map((catalog) =>
                 catalog.name === '流放之路2'
-                    ? { ...catalog, zoneConfigs: [['国际服', '赛季', '普通']] }
+                    ? {
+                          ...catalog,
+                          zoneConfigs: [['国际服', '赛季', '普通']],
+                      }
                     : catalog,
             ),
         };
@@ -191,13 +221,21 @@ describe('price — 抓取与展示', () => {
                     {
                         zone: ['国际服', '赛季', '普通'],
                         readAt: okResult().readAt,
-                        prices: [{ name: '神圣石', price: 0.1, unit: '元/个' }],
+                        prices: [
+                            {
+                                name: '神圣石',
+                                price: 0.1,
+                                unit: '元/个',
+                            },
+                        ],
                     },
                 ],
             },
         });
 
-        const messages = await sendAll(groupMessage('#currency price'));
+        const messages = await sendAll(
+            groupMessage('#currency price'),
+        );
 
         // 回了执 = 真的起了抓取。只看 `readAt` 的话数据是新鲜的, 这一轮会整轮跳过
         expect(messages[0]).toBe('正在获取通货价格数据，请稍等...');
@@ -206,14 +244,24 @@ describe('price — 抓取与展示', () => {
     });
 
     it('订阅多个游戏源时,**每个游戏一条独立的文本消息**', async () => {
-        await send(groupMessage('#currency game add 流放之路2', { role: 'admin' }));
-        await send(groupMessage('#currency game add 火炬之光', { role: 'admin' }));
+        await send(
+            groupMessage('#currency game add 流放之路2', {
+                role: 'admin',
+            }),
+        );
+        await send(
+            groupMessage('#currency game add 火炬之光', {
+                role: 'admin',
+            }),
+        );
         priceHandlerDeps.scrape = async () => ({
             流放之路2: okResult(),
             火炬之光: okResult(),
         });
 
-        const messages = await sendAll(groupMessage('#currency price'));
+        const messages = await sendAll(
+            groupMessage('#currency price'),
+        );
 
         // 回执 + 两条结果
         expect(messages).toHaveLength(3);
@@ -239,9 +287,13 @@ describe('price — 抓取与展示', () => {
 
         await send(groupMessage('#currency price'));
 
-        const data = JSON.parse(env.readDataFile('data.json') ?? '{}');
+        const data = JSON.parse(
+            env.readDataFile('data.json') ?? '{}',
+        );
 
-        expect(data.games['流放之路2'].readAt).toBe('2026-09-16T08:00:05.123Z');
+        expect(data.games['流放之路2'].readAt).toBe(
+            '2026-09-16T08:00:05.123Z',
+        );
     });
 
     it('**只抓本会话订阅的游戏**——别的游戏跟这条指令无关', async () => {
@@ -252,7 +304,11 @@ describe('price — 抓取与展示', () => {
             return {};
         };
 
-        await send(groupMessage('#currency game add 火炬之光', { role: 'admin' }));
+        await send(
+            groupMessage('#currency game add 火炬之光', {
+                role: 'admin',
+            }),
+        );
         await send(groupMessage('#currency price'));
 
         expect(scraped).toEqual(['火炬之光']);
@@ -266,10 +322,16 @@ describe('price — 抓取与展示', () => {
             return {};
         };
 
-        await send(groupMessage('#currency game add 流放之路2', { role: 'admin' }));
+        await send(
+            groupMessage('#currency game add 流放之路2', {
+                role: 'admin',
+            }),
+        );
         pluginState.config = {
             ...pluginState.config,
-            catalogs: pluginState.config.catalogs.filter((catalog) => catalog.name !== '流放之路2'),
+            catalogs: pluginState.config.catalogs.filter(
+                (catalog) => catalog.name !== '流放之路2',
+            ),
         };
 
         await send(groupMessage('#currency price'));
@@ -277,7 +339,7 @@ describe('price — 抓取与展示', () => {
         expect(scraped).toEqual([]);
     });
 
-    it('**`price: null` 与 `price: 0` 的行在展示时都被过滤**, 并交代未取到的数量', async () => {
+    it('**`price: null` 的行在展示时被过滤**, 并交代未取到的数量', async () => {
         await subscribeAndStub('流放之路2', {
             readAt: '2026-09-16T08:00:05.123Z',
             missing: [],
@@ -286,9 +348,19 @@ describe('price — 抓取与展示', () => {
                     zone: ['国服'],
                     readAt: '2026-09-16T08:00:05.123Z',
                     prices: [
-                        { name: '神圣石', price: 0.2444, unit: '元/个' },
+                        {
+                            name: '神圣石',
+                            price: 7.893,
+                            unit: '个/元',
+                            rmbPrice: 0.1267,
+                            rmbUnit: '元/个',
+                        },
                         { name: '崇高石', price: null, unit: null },
-                        { name: '卡兰德的魔镜', price: 0, unit: '元/个' },
+                        {
+                            name: '卡兰德的魔镜',
+                            price: null,
+                            unit: null,
+                        },
                     ],
                 },
             ],
@@ -296,19 +368,58 @@ describe('price — 抓取与展示', () => {
 
         const reply = await send(groupMessage('#currency price'));
 
-        expect(reply).toContain('神圣石 0.2444 元/个');
+        expect(reply).toContain('神圣石 7.893 个/元 (0.1267 元/个)');
         expect(reply).not.toContain('崇高石');
         expect(reply).not.toContain('卡兰德的魔镜');
         expect(reply).toContain('2 项未取到价格');
     });
 
+    it('**失真的行单独交代**, 不并进「未取到价格」', async () => {
+        await subscribeAndStub('流放之路2', {
+            readAt: '2026-09-16T08:00:05.123Z',
+            missing: [],
+            zones: [
+                {
+                    zone: ['国服'],
+                    readAt: '2026-09-16T08:00:05.123Z',
+                    prices: [
+                        {
+                            name: '神圣石',
+                            price: 7.893,
+                            unit: '个/元',
+                        },
+                        {
+                            name: '混沌石',
+                            price: null,
+                            unit: null,
+                            thinMarket: true,
+                            detail: null,
+                        },
+                    ],
+                },
+            ],
+        });
+
+        const reply = await send(groupMessage('#currency price'));
+
+        expect(reply).not.toContain('未取到价格');
+        expect(reply).toContain('1 项挂单过少，价格失真');
+    });
+
     it('**本轮失败且没有旧值**时补一句「本轮未获取到数据」——前面回过执, 静默收场会让人干等', async () => {
         await subscribeAndStub('流放之路2', okResult());
-        priceHandlerDeps.scrape = async () => ({ 流放之路2: { error: '页面打不开' } });
+        priceHandlerDeps.scrape = async () => ({
+            流放之路2: { error: '页面打不开' },
+        });
 
-        const messages = await sendAll(groupMessage('#currency price'));
+        const messages = await sendAll(
+            groupMessage('#currency price'),
+        );
 
-        expect(messages).toEqual(['正在获取通货价格数据，请稍等...', '本轮未获取到数据']);
+        expect(messages).toEqual([
+            '正在获取通货价格数据，请稍等...',
+            '本轮未获取到数据',
+        ]);
     });
 
     it('抓取失败、回退旧数据时展示带「（数据未更新）」——展示不该假装数据是新的（§12.3）', async () => {
@@ -316,7 +427,9 @@ describe('price — 抓取与展示', () => {
         await send(groupMessage('#currency price'));
 
         // 第二轮: 数据已过期会重抓, 而这次抓失败了
-        priceHandlerDeps.scrape = async () => ({ 流放之路2: { error: '页面打不开' } });
+        priceHandlerDeps.scrape = async () => ({
+            流放之路2: { error: '页面打不开' },
+        });
         const reply = await send(groupMessage('#currency price'));
 
         expect(reply).toContain('（数据未更新）');
@@ -329,7 +442,10 @@ describe('price — 抓取与展示', () => {
         const fromPrice = await send(groupMessage('#currency price'));
 
         // 同一会话、同一份 `data.json`, 换推送路径渲染
-        SessionStore.getInstance().setNotifyEnabled('group:555', true);
+        SessionStore.getInstance().setNotifyEnabled(
+            'group:555',
+            true,
+        );
         env.clearSent();
         await pushToSubscribers();
 
