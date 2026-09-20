@@ -127,7 +127,7 @@ describe('renderGame — 区服组合块', () => {
         );
 
         expect(text).toContain(
-            ' · 神圣石 7.893 个/元 (0.1267 元/个)',
+            ' · 「神圣石」 7.893 个/元 (0.1267 元/个)',
         );
         expect(text).not.toContain('崇高石');
         expect(text).toContain('（1 项未取到价格）');
@@ -166,13 +166,13 @@ describe('renderGame — 区服组合块', () => {
         const lines = text.split('\n');
 
         expect(lines).toContain(
-            ' · 神圣石 7.893 个/元 (0.1267 元/个)',
+            ' · 「神圣石」 7.893 个/元 (0.1267 元/个)',
         );
-        expect(lines).toContain('1. 神圣石 11.644 个/元');
-        expect(lines).toContain('2. 崇高石 3553.187 个/元');
+        expect(lines).toContain('1. 「神圣石」 11.644 个/元');
+        expect(lines).toContain('2. 「崇高石」 3553.187 个/元');
         // 编号是**逐区服**判定的, 不是整个游戏一个开关
         expect(lines).not.toContain(
-            '1. 神圣石 7.893 个/元 (0.1267 元/个)',
+            '1. 「神圣石」 7.893 个/元 (0.1267 元/个)',
         );
     });
 
@@ -185,8 +185,8 @@ describe('renderGame — 区服组合块', () => {
             ]),
         );
 
-        expect(text).toContain('1. 初火源质 801.9246 火/元');
-        expect(text).toContain('2. 神圣石 91 个/元');
+        expect(text).toContain('1. 「初火源质」 801.9246 火/元');
+        expect(text).toContain('2. 「神圣石」 91 个/元');
     });
 
     it('**`missing` 单独成行**并交代数量——配置写错时用户唯一的可见信号', () => {
@@ -221,10 +221,16 @@ describe('renderGame — 区服组合块', () => {
 });
 
 describe('renderGame — 两个方向（ADR-0005 结论 2）', () => {
+    it('**通货名带 `「」`**——与头部的游戏名同一种写法', () => {
+        expect(renderGame('流放之路2', oneZone([PRICED]))).toContain(
+            '「神圣石」 7.893 个/元',
+        );
+    });
+
     it('**主方向在前、元方向在括号里**, 且两个数原样显示', () => {
         const text = renderGame('流放之路2', oneZone([PRICED]));
 
-        expect(text).toContain('神圣石 7.893 个/元 (0.1267 元/个)');
+        expect(text).toContain('「神圣石」 7.893 个/元 (0.1267 元/个)');
     });
 
     it('元方向缺失时**整个括号省略**——不补位、不拿主方向取倒数', () => {
@@ -235,7 +241,7 @@ describe('renderGame — 两个方向（ADR-0005 结论 2）', () => {
             ]),
         );
 
-        expect(text).toContain('神圣石 7.893 个/元');
+        expect(text).toContain('「神圣石」 7.893 个/元');
         expect(text).not.toContain('(');
     });
 });
@@ -260,14 +266,14 @@ describe('renderGame — 详情块（ADR-0005）', () => {
         };
     }
 
-    it('成交量原文跟在价格行末尾', () => {
+    it('成交量原文跟在价格行末尾, 并标明是**日**成交', () => {
         const text = renderGame(
             '流放之路2',
             oneZone([withDetail([])]),
         );
 
         expect(text).toContain(
-            ' · 神圣石 7.893 个/元 (0.1267 元/个) · 成交量 518.3w',
+            ' · 「神圣石」 7.893 个/元 (0.1267 元/个) · 成交量 518.3w/天',
         );
     });
 
@@ -278,7 +284,7 @@ describe('renderGame — 详情块（ADR-0005）', () => {
         );
 
         expect(text).toContain(
-            ' · 神圣石 7.893 个/元 (0.1267 元/个)',
+            ' · 「神圣石」 7.893 个/元 (0.1267 元/个)',
         );
         expect(text).not.toContain('成交量');
     });
@@ -333,12 +339,54 @@ describe('renderGame — 详情块（ADR-0005）', () => {
         const lines = text.split('\n');
 
         // 120 ÷ 7.9681 = 15.06；62 ÷ 8.3264 = 7.45 —— 拿屏幕上那两个数就能验算
+        // 库存列最宽是 `120`（3 字符）, 所以 `62` 补 1 + 2×1 = 3 个空格
         expect(lines).toContain(
             '    (1) 120 个 = 15.06 元 (7.9681 个/元)',
         );
         expect(lines).toContain(
-            '    (2) 62 个 = 7.45 元 (8.3264 个/元)',
+            '    (2) 62   个 = 7.45   元 (8.3264 个/元)',
         );
+    });
+
+    it('**三列各自补齐到本块最长的那个数**: 短一个字符就多补 2 个空格', () => {
+        const text = renderGame(
+            '流放之路2',
+            oneZone([
+                withDetail([
+                    { stock: 2000, pricePerYuan: 7.9681, ratioUnit: '个' },
+                    { stock: 300, pricePerYuan: 7.9681, ratioUnit: '个' },
+                    { stock: 330, pricePerYuan: 7.94, ratioUnit: '个' },
+                ]),
+            ]),
+        );
+
+        const lines = text.split('\n');
+
+        // 库存列最宽 `2000`(4): `300` 短 1 位 → 1+2=3 空格
+        // 总价列最宽 `251.00`(6): `37.65` 短 1 位 → 3 空格
+        // 比率价列最宽 `7.9681`(6): `7.94` 短 2 位 → 1+4=5 空格
+        expect(lines).toContain(
+            '    (1) 2000 个 = 251.00 元 (7.9681 个/元)',
+        );
+        expect(lines).toContain(
+            '    (2) 300   个 = 37.65   元 (7.9681 个/元)',
+        );
+        expect(lines).toContain(
+            '    (3) 330   个 = 41.56   元 (7.94     个/元)',
+        );
+    });
+
+    it('**对齐是逐块算的**——只有一条挂单时不补空格', () => {
+        const text = renderGame(
+            '流放之路2',
+            oneZone([
+                withDetail([
+                    { stock: 62, pricePerYuan: 8.3264, ratioUnit: '个' },
+                ]),
+            ]),
+        );
+
+        expect(text).toContain('    (1) 62 个 = 7.45 元 (8.3264 个/元)');
     });
 
     it('**0 条挂单时不显示挂单块**, 成交量照常（那是一个有详情、没挂单的正常形态）', () => {
@@ -348,7 +396,7 @@ describe('renderGame — 详情块（ADR-0005）', () => {
         );
 
         expect(text).not.toContain('个挂单：');
-        expect(text).toContain('成交量 518.3w');
+        expect(text).toContain('成交量 518.3w/天');
     });
 
     it('没开详情的通货**完全不出现详情相关的内容**', () => {

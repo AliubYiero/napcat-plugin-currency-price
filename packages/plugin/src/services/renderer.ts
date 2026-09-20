@@ -92,7 +92,10 @@ export function renderGame(
 }
 
 /**
- * 一行价格: `神圣石 8.417 个/元 (0.1188 元/个) · 成交量 522.8w`。
+ * 一行价格: `「神圣石」 8.417 个/元 (0.1188 元/个) · 成交量 522.8w/天`。
+ *
+ * ⚠️ **通货名带 `「」`**, 与头部的游戏名同一种写法——两者都是"某物的名字", 在一个消息里
+ * 用两种写法会让人以为它们不是一类东西。
  *
  * ⚠️ **主方向（`个/元`）在前, 元方向在括号里**。同一个消息里只有**一个**方向规则——
  * 挂单块也是主方向在前（见 `listingLines`）, 两处可以对照着读。
@@ -104,14 +107,14 @@ export function renderGame(
  */
 function priceLine(price: PriceItem): string {
     const unit = price.unit ? ` ${price.unit}` : '';
-    let line = `${price.name} ${trim(price.price)}${unit}`;
+    let line = `「${price.name}」 ${trim(price.price)}${unit}`;
 
     if (price.rmbPrice !== undefined && price.rmbUnit) {
         line += ` (${trim(price.rmbPrice)} ${price.rmbUnit})`;
     }
 
     const volume = price.detail?.volume;
-    if (volume) line += ` · 成交量 ${volume}`;
+    if (volume) line += ` · 成交量 ${volume}/天`;
 
     return line;
 }
@@ -123,7 +126,8 @@ function priceLine(price: PriceItem): string {
  *
  * ```
  *    前5个挂单：
- *     (1) 120 个 = 15.06 元 (7.9681 个/元)
+ *     (1) 2000 个 = 251.00 元 (7.9681 个/元)
+ *     (2) 300   个 = 37.65   元 (7.9681 个/元)
  * ```
  *
  * 即「**这一单**有多少个 = 买下它要多少元（1 元能买几个）」。挂单块与价格行因此读法相同:
@@ -131,6 +135,10 @@ function priceLine(price: PriceItem): string {
  *
  * ⚠️ **不写算式**。改造前是 `库存 ÷ 比率价 = 总价`, 那个形状把"除法"摆到了台面上;
  * 而这一行真正要回答的是"这一单多少钱、单价多少", 不是"这两个数怎么算出来的"。
+ *
+ * ⚠️ **三列各自按本块最长的那个数**补空格对齐**（见 `columnPad`）**。一列数字长短不齐时
+ * 眼睛没法竖着扫——而挂单块存在的意义恰恰是"扫一眼看盘口"。**逐块算**, 不同通货的挂单
+ * 各排各的: 跨通货对齐要用到别的通货的数字宽度, 那和这一块自己的可读性无关。
  *
  * ⚠️ **标题写实际条数, 不写上限**。`detailTopN = 5` 是**上限**不是承诺——冷门通货只挂
  * 3 条很常见, 写死"前5个"再列 3 行会让用户以为抓漏了 2 条, 而"抓漏"与"本来就只有 3 条"
@@ -149,30 +157,74 @@ function listingLines(price: PriceItem): string[] {
     const listings = price.detail?.listings ?? [];
     if (listings.length === 0) return [];
 
+    const stocks = listings.map((listing) => String(listing.stock));
+    const totals = listings.map((listing) => totalOf(listing).toFixed(2));
+    const rates = listings.map((listing) => trim(listing.pricePerYuan));
+
     const lines = [`   前${listings.length}个挂单：`];
 
     listings.forEach((listing, index) => {
-        lines.push(`    (${index + 1}) ${listingLine(listing)}`);
+        lines.push(
+            `    (${index + 1}) ` +
+                listingLine(listing, {
+                    stock: stocks,
+                    total: totals,
+                    rate: rates,
+                    index,
+                }),
+        );
     });
 
     return lines;
 }
 
+/** 对齐要用的三列文本与当前行号。**整块一起传**, 因为宽度是逐块算出来的 */
+interface ListingColumns {
+    stock: string[];
+    total: string[];
+    rate: string[];
+    index: number;
+}
+
 /**
- * 一条挂单: `120 个 = 15.06 元 (7.9681 个/元)`。
+ * 一条挂单: `2000 个 = 251.00 元 (7.9681 个/元)`。
  *
  * 单位缺失时整段省略, 不留下孤零零的 `/元` 或一个没有量纲的裸数。
  */
-function listingLine(listing: ListingItem): string {
+function listingLine(listing: ListingItem, columns: ListingColumns): string {
     const unit = listing.ratioUnit;
-    const count = unit
-        ? `${listing.stock} ${unit}`
-        : String(listing.stock);
-    const rate = unit
-        ? `${trim(listing.pricePerYuan)} ${unit}/元`
-        : trim(listing.pricePerYuan);
+    const stock = columnPad(columns.stock, columns.index);
+    const total = columnPad(columns.total, columns.index);
+    const rate = columnPad(columns.rate, columns.index);
 
-    return `${count} = ${totalOf(listing).toFixed(2)} 元 (${rate})`;
+    const count = unit ? `${stock} ${unit}` : stock.trimEnd();
+    const unitRate = unit ? `${rate} ${unit}/元` : rate.trimEnd();
+
+    return `${count} = ${total} 元 (${unitRate})`;
+}
+
+/**
+ * 把一列里的某一行补齐到本列最宽的那个数。
+ *
+ * 最终看到的空格数是 **`1 + 2 × (本列最长字符数 − 本行字符数)`**: 分隔符那一个空格由
+ * 调用处的模板给, 本函数只补"每短一个字符再补两个"的那部分。所以这里返回的字符串
+ * **末尾带补出来的空格**（可能为空）。按**字符数**算, 不按数字位数——`7.94` 与 `7.9681`
+ * 差两个字符, 合计补 5 个空格。
+ *
+ * ⚠️ 这是**纯显示口径**, 只对挂单块这三列生效: 价格行的数字不参与（那一行是"这个通货
+ * 什么价", 不是一张要竖着扫的表）。
+ *
+ * ⚠️ 按字符数补在一个**比例字体**里并不能真正对齐（中英混排更是如此）。它换来的是
+ * "短的那个数字后面空得更开", 眼睛更容易分段——这是可读性上的取舍, 不是排版精确性。
+ */
+function columnPad(column: string[], index: number): string {
+    const value = column[index] ?? '';
+    const widest = column.reduce(
+        (max, text) => Math.max(max, text.length),
+        0,
+    );
+
+    return value + ' '.repeat(2 * (widest - value.length));
 }
 
 /** 一条挂单的总价 = `库存 ÷ 比率价`（比率价是「1 元能买几个」） */

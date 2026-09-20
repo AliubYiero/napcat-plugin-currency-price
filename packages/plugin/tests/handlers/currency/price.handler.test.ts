@@ -279,7 +279,7 @@ describe('price — 抓取与展示', () => {
 
         expect(reply).toContain('流放之路2');
         expect(reply).toContain('【国服 / 赛季 / 普通】');
-        expect(reply).toContain('神圣石 0.2444 元/个');
+        expect(reply).toContain('「神圣石」 0.2444 元/个');
     });
 
     it('抓取结果**落盘到 `data.json`**——下次展示才能复用', async () => {
@@ -368,7 +368,7 @@ describe('price — 抓取与展示', () => {
 
         const reply = await send(groupMessage('#currency price'));
 
-        expect(reply).toContain('神圣石 7.893 个/元 (0.1267 元/个)');
+        expect(reply).toContain('「神圣石」 7.893 个/元 (0.1267 元/个)');
         expect(reply).not.toContain('崇高石');
         expect(reply).not.toContain('卡兰德的魔镜');
         expect(reply).toContain('2 项未取到价格');
@@ -434,7 +434,7 @@ describe('price — 抓取与展示', () => {
 
         expect(reply).toContain('（数据未更新）');
         // 推的是上一次成功留下的旧值
-        expect(reply).toContain('神圣石 0.2444 元/个');
+        expect(reply).toContain('「神圣石」 0.2444 元/个');
     });
 
     it('与定时推送**走同一渲染器**——同一份数据、两条路径, 逐字相同', async () => {

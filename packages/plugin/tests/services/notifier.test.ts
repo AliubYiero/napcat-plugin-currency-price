@@ -109,7 +109,7 @@ describe('pushToSubscribers — 「（数据未更新）」标记', () => {
 
         expect(headers()[0]).toContain('（数据未更新）');
         // 旧值照样推出来——标记本身已经是一种通知（§10.4）
-        expect(env.sent[0]).toContain('神圣石 0.2444 元/个');
+        expect(env.sent[0]).toContain('「神圣石」 0.2444 元/个');
     });
 
     it('**因新鲜而跳过的不加标记**——那种情况数据是 5 分钟内的, 加了反而误导', async () => {
