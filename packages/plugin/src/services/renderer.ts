@@ -119,12 +119,18 @@ function priceLine(price: PriceItem): string {
 /**
  * 挂单块。
  *
- * 形状（与主方向一致, 见 `priceLine`）:
+ * 形状（与主方向一致, 见 `priceLine`——括号里那一项是同一件事）:
  *
  * ```
  *    前5个挂单：
- *     (1) 600 个 ÷ 8.3333 个/元 = 72.00 元
+ *     (1) 120 个 = 15.06 元 (7.9681 个/元)
  * ```
+ *
+ * 即「**这一单**有多少个 = 买下它要多少元（1 元能买几个）」。挂单块与价格行因此读法相同:
+ * 主方向（`个/元`）在括号里, 元方向的结论在等号右边。
+ *
+ * ⚠️ **不写算式**。改造前是 `库存 ÷ 比率价 = 总价`, 那个形状把"除法"摆到了台面上;
+ * 而这一行真正要回答的是"这一单多少钱、单价多少", 不是"这两个数怎么算出来的"。
  *
  * ⚠️ **标题写实际条数, 不写上限**。`detailTopN = 5` 是**上限**不是承诺——冷门通货只挂
  * 3 条很常见, 写死"前5个"再列 3 行会让用户以为抓漏了 2 条, 而"抓漏"与"本来就只有 3 条"
@@ -146,16 +152,18 @@ function listingLines(price: PriceItem): string[] {
     const lines = [`   前${listings.length}个挂单：`];
 
     listings.forEach((listing, index) => {
-        lines.push(
-            `    (${index + 1}) ${listingExpression(listing)}`,
-        );
+        lines.push(`    (${index + 1}) ${listingLine(listing)}`);
     });
 
     return lines;
 }
 
-/** 一条挂单的算式。单位缺失时整段省略, 不留下孤零零的 `/元` */
-function listingExpression(listing: ListingItem): string {
+/**
+ * 一条挂单: `120 个 = 15.06 元 (7.9681 个/元)`。
+ *
+ * 单位缺失时整段省略, 不留下孤零零的 `/元` 或一个没有量纲的裸数。
+ */
+function listingLine(listing: ListingItem): string {
     const unit = listing.ratioUnit;
     const count = unit
         ? `${listing.stock} ${unit}`
@@ -164,7 +172,7 @@ function listingExpression(listing: ListingItem): string {
         ? `${trim(listing.pricePerYuan)} ${unit}/元`
         : trim(listing.pricePerYuan);
 
-    return `${count} ÷ ${rate} = ${totalOf(listing).toFixed(2)} 元`;
+    return `${count} = ${totalOf(listing).toFixed(2)} 元 (${rate})`;
 }
 
 /** 一条挂单的总价 = `库存 ÷ 比率价`（比率价是「1 元能买几个」） */

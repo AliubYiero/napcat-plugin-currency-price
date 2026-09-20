@@ -311,14 +311,14 @@ describe('renderGame — 详情块（ADR-0005）', () => {
         expect(text).not.toContain('前5个挂单：');
     });
 
-    it('挂单算式: `库存 ÷ 比率价 = 总价`, 总价两位小数', () => {
+    it('挂单行: `库存 个 = 总价 元 (比率价 个/元)`, 总价两位小数', () => {
         const text = renderGame(
             '流放之路2',
             oneZone([
                 withDetail([
                     {
-                        stock: 600,
-                        pricePerYuan: 8.3333,
+                        stock: 120,
+                        pricePerYuan: 7.9681,
                         ratioUnit: '个',
                     },
                     {
@@ -332,12 +332,12 @@ describe('renderGame — 详情块（ADR-0005）', () => {
 
         const lines = text.split('\n');
 
-        // 600 ÷ 8.3333 = 72.00；62 ÷ 8.3264 = 7.45 —— 拿屏幕上那两个数就能验算
+        // 120 ÷ 7.9681 = 15.06；62 ÷ 8.3264 = 7.45 —— 拿屏幕上那两个数就能验算
         expect(lines).toContain(
-            '    (1) 600 个 ÷ 8.3333 个/元 = 72.00 元',
+            '    (1) 120 个 = 15.06 元 (7.9681 个/元)',
         );
         expect(lines).toContain(
-            '    (2) 62 个 ÷ 8.3264 个/元 = 7.45 元',
+            '    (2) 62 个 = 7.45 元 (8.3264 个/元)',
         );
     });
 
