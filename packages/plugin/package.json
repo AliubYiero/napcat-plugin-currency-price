@@ -2,7 +2,7 @@
     "name": "napcat-plugin-currency-price",
     "plugin": "千岛通货价格",
     "description": "定时抓取千岛各游戏的通货价格并推送到群聊 / 私聊",
-    "version": "1.0.0",
+    "version": "1.1.1",
     "type": "module",
     "main": "index.mjs",
     "author": "Yiero",
